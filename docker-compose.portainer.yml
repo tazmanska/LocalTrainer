@@ -1,0 +1,12 @@
+# Stack do wklejenia w Portainer (Stacks → Add stack → Web editor)
+# po zaimportowaniu obrazu z release/trenazer-<wersja>.tar (Images → Import).
+services:
+  trenazer:
+    image: trenazer:latest
+    container_name: trenazer
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # zmień na swój udział, np. /volume1/docker/trenazer/data
+      - /volume1/docker/trenazer/data:/data
