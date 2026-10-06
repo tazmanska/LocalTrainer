@@ -1,0 +1,18 @@
+<workout_file>
+    <author>MyWoosh</author>
+    <name>Sweet Spot 3x10</name>
+    <description>Trzy 10-minutowe bloki na 90% FTP.</description>
+    <sportType>bike</sportType>
+    <tags>
+        <tag name="SweetSpot"/>
+    </tags>
+    <workout>
+        <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.75"/>
+        <IntervalsT Repeat="3" OnDuration="600" OffDuration="240" OnPower="0.9" OffPower="0.55" Cadence="90">
+            <textevent timeoffset="10" message="Trzymaj kadencję"/>
+        </IntervalsT>
+        <SteadyState Duration="120" Power="0.6"/>
+        <FreeRide Duration="60" FlatRoad="1"/>
+        <Cooldown Duration="480" PowerLow="0.4" PowerHigh="0.6"/>
+    </workout>
+</workout_file>

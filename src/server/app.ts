@@ -3,6 +3,8 @@ import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { validateProfile } from '../shared/profile.js';
 import { ProfileStore } from './storage.js';
+import { WorkoutStore } from './workouts.js';
+import { ZwoError } from './zwo.js';
 
 export interface AppOptions {
   dataDir: string;
@@ -14,6 +16,7 @@ export interface AppOptions {
 export function buildApp({ dataDir, clientDir, logger = false }: AppOptions) {
   const app = Fastify({ logger });
   const profiles = new ProfileStore(dataDir);
+  const workouts = new WorkoutStore(dataDir);
 
   app.get('/api/health', async () => ({ ok: true }));
 
@@ -24,6 +27,31 @@ export function buildApp({ dataDir, clientDir, logger = false }: AppOptions) {
     if (!profile) return reply.code(400).send({ errors });
     await profiles.write(profile);
     return profile;
+  });
+
+  app.get('/api/workouts', async () => workouts.list());
+
+  app.get<{ Params: { id: string } }>('/api/workouts/:id', async (req, reply) => {
+    const w = await workouts.get(req.params.id);
+    return w ?? reply.code(404).send({ error: 'Nie ma takiego treningu' });
+  });
+
+  app.post<{ Body: { fileName?: unknown; content?: unknown } }>('/api/workouts', async (req, reply) => {
+    const { fileName, content } = req.body ?? {};
+    if (typeof fileName !== 'string' || typeof content !== 'string' || !content.trim()) {
+      return reply.code(400).send({ error: 'Oczekiwano pól fileName i content' });
+    }
+    try {
+      return reply.code(201).send(await workouts.import(fileName, content));
+    } catch (err) {
+      if (err instanceof ZwoError) return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/workouts/:id', async (req, reply) => {
+    const ok = await workouts.remove(req.params.id);
+    return ok ? reply.code(204).send() : reply.code(404).send({ error: 'Nie ma takiego treningu' });
   });
 
   if (clientDir && existsSync(clientDir)) {

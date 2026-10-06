@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { LibraryScreen } from './screens/LibraryScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 
 type View = 'live' | 'lib' | 'hist' | 'prof';
@@ -11,7 +12,7 @@ const VIEWS: { id: View; label: string }[] = [
 ];
 
 export function App() {
-  const [view, setView] = useState<View>('prof');
+  const [view, setView] = useState<View>('lib');
 
   return (
     <>
@@ -34,7 +35,7 @@ export function App() {
         </nav>
       </header>
       <main className="wrap">
-        {view === 'prof' ? <ProfileScreen /> : <Placeholder view={view} />}
+        {view === 'prof' ? <ProfileScreen /> : view === 'lib' ? <LibraryScreen /> : <Placeholder view={view} />}
       </main>
     </>
   );
