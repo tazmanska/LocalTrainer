@@ -1,0 +1,10 @@
+services:
+  trenazer:
+    build: .
+    container_name: trenazer
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # na Synology np. /volume1/docker/trenazer/data:/data
+      - ./data:/data
