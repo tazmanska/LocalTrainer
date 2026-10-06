@@ -83,3 +83,63 @@ describe('/api/workouts', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe('/api/sessions', () => {
+  const samples = Array.from({ length: 120 }, (_, t) => ({ t, power: 200, cadence: 90, hr: 140, target: 200 }));
+  const input = {
+    workoutId: 'w1',
+    workoutName: 'Próg & <test>',
+    startedAt: '2026-10-06T05:30:00.000Z',
+    ftp: 250,
+    maxHr: 188,
+    weight: 72,
+    source: 'sim',
+    segments: [{ kind: 'steady', label: 'Równa jazda', duration: 120, p0: 0.8, p1: 0.8 }],
+    samples,
+  };
+
+  it('zapisuje sesję z podsumowaniem, listuje bez próbek i usuwa', async () => {
+    const app = buildApp({ dataDir });
+    const post = await app.inject({ method: 'POST', url: '/api/sessions', payload: input });
+    expect(post.statusCode).toBe(201);
+    const s = post.json();
+    expect(s.id).toBe('20261006-053000');
+    expect(s.summary).toMatchObject({ duration: 120, avgPower: 200, np: 200, avgHr: 140, work: 24 });
+
+    const again = await app.inject({ method: 'POST', url: '/api/sessions', payload: input });
+    expect(again.json().id).toBe('20261006-053000-2');
+
+    const list = (await app.inject({ method: 'GET', url: '/api/sessions' })).json();
+    expect(list).toHaveLength(2);
+    expect(list[0].samples).toBeUndefined();
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/sessions/${s.id}` })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: `/api/sessions/${s.id}` })).statusCode).toBe(404);
+  });
+
+  it('odrzuca niepoprawne próbki', async () => {
+    const res = await buildApp({ dataDir }).inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { ...input, samples: [{ t: 0, power: 'dużo', cadence: null, hr: null, target: null }] },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('eksportuje TCX i GPX z mocą, tętnem i kadencją', async () => {
+    const app = buildApp({ dataDir });
+    const { id } = (await app.inject({ method: 'POST', url: '/api/sessions', payload: input })).json();
+    const tcx = await app.inject({ method: 'GET', url: `/api/sessions/${id}/export.tcx` });
+    expect(tcx.statusCode).toBe(200);
+    expect(tcx.headers['content-disposition']).toContain(`trenazer_${id}.tcx`);
+    expect(tcx.body).toContain('<Time>2026-10-06T05:30:00Z</Time>');
+    expect(tcx.body).toContain('<ns3:Watts>200</ns3:Watts>');
+    expect(tcx.body).toContain('Próg &amp; &lt;test&gt;');
+    expect(tcx.body.match(/<Trackpoint>/g)).toHaveLength(120);
+
+    const gpx = await app.inject({ method: 'GET', url: `/api/sessions/${id}/export.gpx` });
+    expect(gpx.body).toContain('<gpxtpx:hr>140</gpxtpx:hr>');
+    expect(gpx.body).toContain('<power>200</power>');
+    expect((await app.inject({ method: 'GET', url: `/api/sessions/${id}/export.fit` })).statusCode).toBe(404);
+  });
+});

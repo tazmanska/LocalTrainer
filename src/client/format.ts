@@ -23,3 +23,11 @@ export function powerColor(pct: number | null): string {
   if (pct === null) return 'var(--dim)';
   return `var(--z${zoneIndex(POWER_ZONES, 100, pct * 100) + 1})`;
 }
+
+/** Polska odmiana: 1 sesja, 2 sesje, 5 sesji, 22 sesje. */
+export function plural(n: number, one: string, few: string, many: string): string {
+  if (n === 1) return `${n} ${one}`;
+  const d = n % 10;
+  const t = n % 100;
+  return `${n} ${d >= 2 && d <= 4 && !(t >= 12 && t <= 14) ? few : many}`;
+}

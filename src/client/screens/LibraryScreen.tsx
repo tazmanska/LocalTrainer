@@ -3,10 +3,11 @@ import { segmentStarts, workoutStats, type Workout } from '../../shared/workout'
 import { deleteWorkout, getProfile, importWorkout, listWorkouts } from '../api';
 import { WorkoutChart } from '../components/WorkoutChart';
 import { fmtMinutes, fmtTime, pl, powerColor } from '../format';
+import { Stat } from '../components/Stat';
 
 type Notice = { kind: 'ok' | 'err'; text: string };
 
-export function LibraryScreen() {
+export function LibraryScreen({ onStart }: { onStart: (w: Workout) => void }) {
   const [workouts, setWorkouts] = useState<Workout[] | null>(null);
   const [ftp, setFtp] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -117,7 +118,7 @@ export function LibraryScreen() {
         </div>
       </div>
       {current ? (
-        <WorkoutDetail key={current.id} w={current} ftp={ftp ?? 200} onDelete={() => onDelete(current)} />
+        <WorkoutDetail key={current.id} w={current} ftp={ftp ?? 200} onStart={() => onStart(current)} onDelete={() => onDelete(current)} />
       ) : (
         <div className="panel detail placeholder">Wybierz trening z listy albo wczytaj plik.</div>
       )}
@@ -140,7 +141,7 @@ function WorkoutCard({ w, selected, onSelect }: { w: Workout; selected: boolean;
   );
 }
 
-function WorkoutDetail({ w, ftp, onDelete }: { w: Workout; ftp: number; onDelete: () => void }) {
+function WorkoutDetail({ w, ftp, onStart, onDelete }: { w: Workout; ftp: number; onStart: () => void; onDelete: () => void }) {
   const s = useMemo(() => workoutStats(w.segments), [w]);
   const starts = useMemo(() => segmentStarts(w.segments), [w]);
   const [confirm, setConfirm] = useState(false);
@@ -158,7 +159,7 @@ function WorkoutDetail({ w, ftp, onDelete }: { w: Workout; ftp: number; onDelete
           </div>
         </div>
         <div className="actions">
-          <button className="btn big primary" type="button" disabled title="Sterowanie trenażerem pojawi się w kroku 4">
+          <button className="btn big primary" type="button" onClick={onStart}>
             Rozpocznij trening
           </button>
           {confirm ? (
@@ -223,11 +224,3 @@ function WorkoutDetail({ w, ftp, onDelete }: { w: Workout; ftp: number; onDelete
   );
 }
 
-function Stat({ k, v }: { k: string; v: string }) {
-  return (
-    <div>
-      <span className="lbl">{k}</span>
-      <span className="num">{v}</span>
-    </div>
-  );
-}

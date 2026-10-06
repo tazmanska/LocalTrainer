@@ -16,10 +16,10 @@ npm test
 docker compose up -d --build   # http://<nas>:3000
 ```
 
-Dane trafiają do katalogu podmontowanego jako `/data` (`profile.json`, `workouts/` z oryginałami `.zwo` i sparsowanym JSON; później historia sesji).
+Dane trafiają do katalogu podmontowanego jako `/data` (`profile.json`, `workouts/` z oryginałami `.zwo` i sparsowanym JSON, `history/` z zapisanymi sesjami).
 
 ## Struktura
 
 - `src/shared` – logika wspólna (profil, walidacja, strefy mocy i tętna)
-- `src/server` – Fastify: `GET/PUT /api/profile`, `GET/POST/DELETE /api/workouts` (import ZWO), serwowanie zbudowanego frontendu
-- `src/client` – React + Vite
+- `src/server` – Fastify: profil, treningi (import ZWO), historia sesji z eksportem TCX/GPX, serwowanie zbudowanego frontendu
+- `src/client` – React + Vite; `devices/` to wymienne źródło danych (na razie symulacja trenażera i pulsometru), `session/runner.ts` to przebieg treningu
