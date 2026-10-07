@@ -101,6 +101,14 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
     setEnding(true);
     redraw();
   };
+  // Etykieta przycisku podąża za stanem pełnego ekranu, także po wyjściu klawiszem Esc.
+  const [isFull, setIsFull] = useState(() => !!document.fullscreenElement);
+  useEffect(() => {
+    const on = () => setIsFull(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+
   const fullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
     else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -172,11 +180,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
             {started && !r.running && !r.finished && <span className="chip paused-tag">Pauza</span>}
           </div>
         </div>
-        <div className="panel clock">
+        <div className="panel clock" style={{ '--clock-chars': r.total >= 3600 ? 7 : 5 } as React.CSSProperties}>
           <div className="lbl">Czas treningu</div>
           <div className="num">{fmtTime(r.elapsed)}</div>
         </div>
-        <div className="panel clock">
+        <div className="panel clock" style={{ '--clock-chars': r.total >= 3600 ? 7 : 5 } as React.CSSProperties}>
           <div className="lbl">Do końca</div>
           <div className="num">{fmtTime(r.total - r.elapsed)}</div>
         </div>
@@ -320,7 +328,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
         </div>
         <span className="grow" />
         <button className="btn big" type="button" onClick={fullscreen}>
-          Pełny ekran
+          {isFull ? 'Zamknij pełny ekran' : 'Pełny ekran'}
         </button>
         <button className="btn big danger" type="button" onClick={stop}>
           Zakończ

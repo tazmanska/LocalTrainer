@@ -130,3 +130,6 @@ main.full { max-width: none; }
 .dev .btn { min-height: 2.4rem; padding-block: 0.4rem; }
 .dot.warn { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in oklab, var(--warn) 25%, transparent); }
 .chip.bad { color: var(--err); border-color: color-mix(in oklab, var(--err) 50%, var(--line)); }
+
+/* Zegary mają stałą szerokość, żeby układ nie skakał przy zmianie liczby cyfr (cyfry tabelaryczne mają szerokość 1ch). */
+.clock .num { min-width: calc(var(--clock-chars, 5) * 1ch); white-space: nowrap; }
