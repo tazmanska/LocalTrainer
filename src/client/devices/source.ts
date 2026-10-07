@@ -1,16 +1,22 @@
-// Wymienne źródło danych treningowych. Dziś: symulacja; w kolejnym kroku: trenażer FTMS i pas tętna przez BLE.
+// Wymienne źródło danych treningowych: symulacja albo trenażer FTMS / Tacx FE-C i pas tętna przez BLE.
 
 export interface Reading {
-  power?: number;
-  cadence?: number;
-  hr?: number;
+  /** null = brak danych (np. urządzenie rozłączone) */
+  power?: number | null;
+  cadence?: number | null;
+  hr?: number | null;
 }
+
+export type DeviceState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
 export interface DeviceInfo {
   /** nazwa wyświetlana na chipie, np. „KICKR CORE” albo „Symulowany trenażer” */
   label: string;
   kind: 'trainer' | 'hr';
   connected: boolean;
+  state: DeviceState;
+  /** komunikat błędu albo stanu do pokazania użytkownikowi */
+  message?: string;
 }
 
 export interface DataSource {
@@ -22,4 +28,6 @@ export interface DataSource {
   setTargetPower(watts: number | null): void;
   /** Subskrypcja odczytów; zwraca funkcję wypisującą. */
   onReading(cb: (r: Reading) => void): () => void;
+  /** Zmiana stanu urządzeń (połączenie, rozłączenie, błąd). */
+  onChange(cb: () => void): () => void;
 }

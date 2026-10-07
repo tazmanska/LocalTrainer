@@ -41,8 +41,8 @@ export class SimulatedSource implements DataSource {
   devices(): DeviceInfo[] {
     const on = this.timer !== null;
     return [
-      { label: 'Symulowany trenażer', kind: 'trainer', connected: on },
-      { label: 'Symulowany pas HR', kind: 'hr', connected: on },
+      { label: 'Symulowany trenażer', kind: 'trainer', connected: on, state: on ? 'connected' : 'idle' },
+      { label: 'Symulowany pas HR', kind: 'hr', connected: on, state: on ? 'connected' : 'idle' },
     ];
   }
 
@@ -62,7 +62,14 @@ export class SimulatedSource implements DataSource {
 
   onReading(cb: (r: Reading) => void) {
     this.listeners.add(cb);
-    return () => this.listeners.delete(cb);
+    return () => {
+      this.listeners.delete(cb);
+    };
+  }
+
+  onChange(): () => void {
+    // stan symulacji zmienia się tylko przez connect/disconnect wywoływane przez ekran treningu
+    return () => {};
   }
 
   /** Jeden krok symulacji (publiczny na potrzeby testów). */

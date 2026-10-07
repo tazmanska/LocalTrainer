@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from 'react';
 import { segmentStarts, workoutStats, type Workout } from '../../shared/workout';
 import { deleteWorkout, getProfile, importWorkout, listWorkouts } from '../api';
 import { WorkoutChart } from '../components/WorkoutChart';
@@ -7,7 +7,7 @@ import { Stat } from '../components/Stat';
 
 type Notice = { kind: 'ok' | 'err'; text: string };
 
-export function LibraryScreen({ onStart }: { onStart: (w: Workout) => void }) {
+export function LibraryScreen({ onStart, devices }: { onStart: (w: Workout) => void; devices: ReactNode }) {
   const [workouts, setWorkouts] = useState<Workout[] | null>(null);
   const [ftp, setFtp] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -109,6 +109,7 @@ export function LibraryScreen({ onStart }: { onStart: (w: Workout) => void }) {
             ))}
           </ul>
         )}
+        <div className="panel devwrap">{devices}</div>
         <div className="list" role="listbox" aria-label="Zapisane treningi">
           {workouts === null && !notices.length && <p className="muted">Wczytywanie…</p>}
           {workouts?.length === 0 && <p className="muted">Brak treningów. Wczytaj pierwszy plik .zwo.</p>}

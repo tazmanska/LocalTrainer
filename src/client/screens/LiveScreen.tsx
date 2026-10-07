@@ -5,6 +5,7 @@ import type { Workout } from '../../shared/workout';
 import { saveSession } from '../api';
 import { Stat } from '../components/Stat';
 import { WorkoutChart } from '../components/WorkoutChart';
+import type { BleSource } from '../devices/ble';
 import { SimulatedSource } from '../devices/simulated';
 import type { DataSource, Reading } from '../devices/source';
 import { fmtTime, pl } from '../format';
@@ -17,15 +18,17 @@ interface Props {
   onSaved: (sessionId: string) => void;
   /** trening porzucony bez zapisu */
   onDiscard: () => void;
+  /** urządzenia Bluetooth; null = tryb symulacji */
+  ble: BleSource | null;
 }
 
 const POWER_AVG_WINDOW = 3;
 
-export function LiveScreen({ workout, profile, onSaved, onDiscard }: Props) {
+export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props) {
   const runner = useRef<WorkoutRunner>();
   runner.current ??= new WorkoutRunner(workout, profile.ftp);
   const source = useRef<DataSource>();
-  source.current ??= new SimulatedSource({ ftp: profile.ftp, maxHr: profile.maxHr });
+  source.current ??= ble ?? new SimulatedSource({ ftp: profile.ftp, maxHr: profile.maxHr });
   const latest = useRef<Reading>({});
   const powerBuf = useRef<number[]>([]);
   const [, setFrame] = useState(0);
@@ -40,11 +43,13 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard }: Props) {
   useEffect(() => {
     const off = src.onReading((x) => {
       latest.current = { ...latest.current, ...x };
-      if (x.power !== undefined) {
+      if (x.power === null) powerBuf.current = [];
+      else if (x.power !== undefined) {
         powerBuf.current.push(x.power);
         if (powerBuf.current.length > POWER_AVG_WINDOW) powerBuf.current.shift();
       }
     });
+    const offChange = src.onChange(redraw);
     void src.connect().then(redraw);
     const timer = setInterval(() => {
       if (r.running) {
@@ -57,7 +62,10 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard }: Props) {
     return () => {
       clearInterval(timer);
       off();
-      src.disconnect();
+      offChange();
+      // Trenażer zostaje sparowany na kolejne treningi, ale wraca do jazdy swobodnej.
+      src.setTargetPower(null);
+      if (src.id === 'sim') src.disconnect();
     };
   }, [r, src]);
 
@@ -154,9 +162,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard }: Props) {
               {tgtW === null ? 'Jazda swobodna' : 'Tryb ERG'}
             </span>
             {src.devices().map((d) => (
-              <span className="chip" key={d.label}>
-                <span className={d.connected ? 'dot' : 'dot off'} />
+              <span className={d.state === 'error' ? 'chip bad' : 'chip'} key={d.kind} title={d.message}>
+                <span className={d.connected ? 'dot' : d.state === 'reconnecting' || d.state === 'connecting' ? 'dot warn' : 'dot off'} />
                 {d.label}
+                {d.state === 'reconnecting' && ' · łączenie…'}
+                {d.state === 'error' && ' · błąd'}
               </span>
             ))}
             {started && !r.running && !r.finished && <span className="chip paused-tag">Pauza</span>}
