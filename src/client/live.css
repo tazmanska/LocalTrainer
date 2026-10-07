@@ -133,3 +133,8 @@ main.full { max-width: none; }
 
 /* Zegary mają stałą szerokość, żeby układ nie skakał przy zmianie liczby cyfr (cyfry tabelaryczne mają szerokość 1ch). */
 .clock .num { min-width: calc(var(--clock-chars, 5) * 1ch); white-space: nowrap; }
+
+/* Wykresy ostatnich minut w tle kafelków mocy, kadencji i tętna */
+.tile { position: relative; overflow: hidden; }
+.tile > :not(.spark) { position: relative; z-index: 1; }
+.spark { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 62%; pointer-events: none; }

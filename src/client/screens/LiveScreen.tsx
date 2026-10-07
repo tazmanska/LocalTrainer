@@ -3,6 +3,7 @@ import { HR_ZONES, POWER_ZONES, zoneIndex, zoneRanges, type Profile, type ZoneDe
 import { summarize } from '../../shared/session';
 import type { Workout } from '../../shared/workout';
 import { saveSession } from '../api';
+import { Sparkline } from '../components/Sparkline';
 import { Stat } from '../components/Stat';
 import { WorkoutChart } from '../components/WorkoutChart';
 import type { BleSource } from '../devices/ble';
@@ -23,6 +24,8 @@ interface Props {
 }
 
 const POWER_AVG_WINDOW = 3;
+/** okno wykresów w tle kafelków, s */
+const SPARK_WINDOW = 180;
 
 export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props) {
   const runner = useRef<WorkoutRunner>();
@@ -151,6 +154,8 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const hr = latest.current.hr ?? 0;
   const hz = zoneIndex(HR_ZONES, profile.maxHr, hr);
   const cadence = latest.current.cadence ?? 0;
+  const recent = r.samples.slice(-SPARK_WINDOW);
+  const sparkPowerMax = Math.max(profile.ftp * 1.3, ...recent.map((s) => Math.max(s.power ?? 0, s.target ?? 0))) * 1.05;
   const cadAvg = r.samples.length
     ? Math.round(r.samples.reduce((a, s) => a + (s.cadence ?? 0), 0) / r.samples.length)
     : null;
@@ -233,6 +238,14 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
         </div>
 
         <div className="panel tile power" style={{ '--zc': `var(--z${pz + 1})` } as React.CSSProperties}>
+          <Sparkline
+            values={recent.map((s) => s.power)}
+            reference={recent.map((s) => s.target)}
+            window={SPARK_WINDOW}
+            min={0}
+            max={sparkPowerMax}
+            color="var(--zc)"
+          />
           <div className="head">
             <div className="lbl">Moc · śr. 3 s</div>
             <span className="zchip">
@@ -257,6 +270,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
 
         <div className="side">
           <div className="panel tile metric">
+            <Sparkline values={recent.map((s) => s.cadence)} window={SPARK_WINDOW} min={40} max={130} color="var(--accent)" />
             <div className="lbl">Kadencja</div>
             <div className="row">
               <div className="num">
@@ -267,6 +281,13 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
             </div>
           </div>
           <div className="panel tile metric hr">
+            <Sparkline
+              values={recent.map((s) => (s.hr ? s.hr : null))}
+              window={SPARK_WINDOW}
+              min={Math.round(profile.maxHr * 0.45)}
+              max={profile.maxHr}
+              color="var(--hr)"
+            />
             <div className="row">
               <div className="lbl">Tętno</div>
               <span className="zchip" style={{ '--zc': `var(--h${hz + 1})` } as React.CSSProperties}>
