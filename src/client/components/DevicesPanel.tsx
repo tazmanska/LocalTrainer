@@ -72,7 +72,18 @@ export function DevicesPanel({ mode, onMode, ble }: Props) {
       {mode === 'sim' ? (
         <p className="muted small">Trenażer i pulsometr są symulowane: moc podąża za celem, tętno rośnie z opóźnieniem.</p>
       ) : unavailable ? (
-        <p className="err small">{unavailable}</p>
+        <p className="err small">
+          {unavailable}
+          {!window.isSecureContext && (
+            <>
+              {' '}
+              <a href="/api/cert" download>
+                Pobierz certyfikat
+              </a>{' '}
+              i dodaj go do zaufanych (instrukcja w zakładce Profil).
+            </>
+          )}
+        </p>
       ) : (
         <div className="devices">
           {rows.map(({ info, sub, pair, drop }) => (

@@ -143,3 +143,30 @@ describe('/api/sessions', () => {
     expect((await app.inject({ method: 'GET', url: `/api/sessions/${id}/export.fit` })).statusCode).toBe(404);
   });
 });
+
+describe('/api/cert', () => {
+  it('bez certyfikatu zwraca available=false i 404', async () => {
+    const app = buildApp({ dataDir });
+    expect((await app.inject({ method: 'GET', url: '/api/cert/info' })).json()).toEqual({ available: false });
+    expect((await app.inject({ method: 'GET', url: '/api/cert' })).statusCode).toBe(404);
+  });
+
+  it('udostępnia certyfikat z opisem nazw i datą ważności', async () => {
+    const pem = await readFile(path.join(__dirname, 'fixtures/test.crt'), 'utf8');
+    await writeFile(path.join(dataDir, 'trenazer.crt'), pem);
+    const app = buildApp({ dataDir });
+    const info = (await app.inject({ method: 'GET', url: '/api/cert/info' })).json();
+    expect(info).toMatchObject({ available: true, subject: 'trenazer.local', names: ['trenazer.local', '192.168.0.158'], fileName: 'trenazer.crt' });
+    const res = await app.inject({ method: 'GET', url: '/api/cert' });
+    expect(res.headers['content-disposition']).toContain('trenazer.crt');
+    expect(res.body).toMatch(/^-----BEGIN CERTIFICATE-----/);
+  });
+
+  it('nigdy nie wysyła pliku zawierającego klucz prywatny', async () => {
+    const pem = await readFile(path.join(__dirname, 'fixtures/test.crt'), 'utf8');
+    await writeFile(path.join(dataDir, 'trenazer.crt'), pem + '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n');
+    const res = await buildApp({ dataDir }).inject({ method: 'GET', url: '/api/cert' });
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain('PRIVATE');
+  });
+});

@@ -9,7 +9,7 @@ const clientDir = path.resolve(process.env.CLIENT_DIR ?? path.join(here, '../../
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
 
-const app = buildApp({ dataDir, clientDir, logger: true });
+const app = buildApp({ dataDir, clientDir, logger: true, certFile: process.env.CERT_FILE || undefined });
 
 app.listen({ port, host }).catch((err) => {
   app.log.error(err);

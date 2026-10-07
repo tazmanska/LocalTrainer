@@ -10,6 +10,7 @@ import {
   type ZoneRange,
 } from '../../shared/profile';
 import { ApiValidationError, getProfile, saveProfile } from '../api';
+import { CertPanel } from '../components/CertPanel';
 
 type Draft = Record<keyof Profile, string>;
 
@@ -140,6 +141,7 @@ export function ProfileScreen() {
           color={(i) => `var(--h${i + 1})`}
           barWeight={() => 1}
         />
+        <CertPanel />
       </div>
     </div>
   );

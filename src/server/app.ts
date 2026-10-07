@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { readPublicCert, type CertInfo } from './cert.js';
 import { validateProfile } from '../shared/profile.js';
 import { checkSessionInput, type SessionInput } from '../shared/session.js';
 import { toGpx, toTcx } from './export.js';
@@ -14,15 +16,31 @@ export interface AppOptions {
   /** katalog zbudowanego frontendu; pominięty w trybie deweloperskim (Vite serwuje go sam) */
   clientDir?: string;
   logger?: boolean;
+  /** publiczny certyfikat HTTPS do pobrania z aplikacji; domyślnie <dataDir>/trenazer.crt */
+  certFile?: string;
 }
 
-export function buildApp({ dataDir, clientDir, logger = false }: AppOptions) {
+export function buildApp({ dataDir, clientDir, logger = false, certFile }: AppOptions) {
   const app = Fastify({ logger });
   const profiles = new ProfileStore(dataDir);
   const workouts = new WorkoutStore(dataDir);
   const sessions = new SessionStore(dataDir);
 
   app.get('/api/health', async () => ({ ok: true }));
+
+  const certPath = certFile ?? path.join(dataDir, 'trenazer.crt');
+  app.get('/api/cert/info', async (): Promise<CertInfo> => {
+    const c = await readPublicCert(certPath);
+    return c ? { ...c.info, fileName: path.basename(certPath) } : { available: false };
+  });
+  app.get('/api/cert', async (_req, reply) => {
+    const c = await readPublicCert(certPath);
+    if (!c) return reply.code(404).send({ error: 'Certyfikat nie jest skonfigurowany' });
+    return reply
+      .type('application/x-x509-ca-cert')
+      .header('Content-Disposition', `attachment; filename="${path.basename(certPath)}"`)
+      .send(c.pem);
+  });
 
   app.get('/api/profile', async () => profiles.read());
 
