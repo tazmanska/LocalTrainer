@@ -5,6 +5,10 @@ export interface Reading {
   power?: number | null;
   cadence?: number | null;
   hr?: number | null;
+  /** moc zmierzona przez pedały (do podziału na lewą i prawą nogę), W */
+  pedalPower?: number | null;
+  /** udział lewej nogi w mocy pedałów, % */
+  balance?: number | null;
 }
 
 export type DeviceState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error';
@@ -12,7 +16,7 @@ export type DeviceState = 'idle' | 'connecting' | 'connected' | 'reconnecting' |
 export interface DeviceInfo {
   /** nazwa wyświetlana na chipie, np. „KICKR CORE” albo „Symulowany trenażer” */
   label: string;
-  kind: 'trainer' | 'hr';
+  kind: 'trainer' | 'hr' | 'pedals';
   connected: boolean;
   state: DeviceState;
   /** komunikat błędu albo stanu do pokazania użytkownikowi */

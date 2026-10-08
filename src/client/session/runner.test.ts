@@ -55,6 +55,16 @@ describe('WorkoutRunner', () => {
     expect(r.running).toBe(false);
   });
 
+  it('zapisuje balans i liczy średni balans ważony mocą', () => {
+    const r = new WorkoutRunner(workout, 200);
+    r.start();
+    r.tick({ power: 300, balance: 52 });
+    r.tick({ power: 100, balance: 44 });
+    r.tick({ power: 200 });
+    expect(r.samples.map((s) => s.balance)).toEqual([52, 44, undefined]);
+    expect(summarize(r.samples, 200).avgBalance).toBe(50);
+  });
+
   it('ogranicza intensywność do 50–150%', () => {
     const r = new WorkoutRunner(workout, 200);
     for (let i = 0; i < 20; i++) r.adjustBias(0.05);

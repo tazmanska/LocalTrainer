@@ -181,3 +181,49 @@ export function decodeFecPage(p: Uint8Array): FecTelemetry | null {
   }
   return null;
 }
+
+// ---------- Cycling Power Service (pedały i korby pomiarowe, np. Favero Assioma) ----------
+
+export const CYCLING_POWER_SERVICE = 0x1818;
+export const CYCLING_POWER_MEASUREMENT = 0x2a63;
+
+export interface PowerMeasurement {
+  power: number;
+  /** udział lewej nogi w %, gdy miernik go podaje (obustronne pedały) */
+  balanceLeft: number | null;
+  /** licznik obrotów korby i czas ostatniego obrotu (1/1024 s), do wyliczenia kadencji */
+  crank: { revs: number; time: number } | null;
+}
+
+/** Cycling Power Measurement (0x2A63): pola opcjonalne występują w kolejności bitów flag. */
+export function parsePowerMeasurement(data: DataView): PowerMeasurement | null {
+  if (data.byteLength < 4) return null;
+  const flags = data.getUint16(0, true);
+  const power = data.getInt16(2, true);
+  let i = 4;
+  let balanceLeft: number | null = null;
+  if (flags & 0x0001) {
+    if (i + 1 > data.byteLength) return { power, balanceLeft, crank: null };
+    const raw = data.getUint8(i);
+    i += 1;
+    // jednostka 0,5%; bit 1 flag mówi, czy wartość dotyczy lewej nogi (0 = nieokreślone, traktujemy jak lewą,
+    // tak jak robi to większość aplikacji); 0xFF oznacza brak danych
+    if (raw !== 0xff) balanceLeft = raw / 2;
+  }
+  if (flags & 0x0004) i += 2; // skumulowany moment obrotowy
+  if (flags & 0x0010) i += 6; // obroty koła: uint32 + czas uint16
+  let crank: PowerMeasurement['crank'] = null;
+  if (flags & 0x0020 && i + 4 <= data.byteLength) {
+    crank = { revs: data.getUint16(i, true), time: data.getUint16(i + 2, true) };
+  }
+  return { power, balanceLeft, crank };
+}
+
+/** Kadencja z dwóch kolejnych odczytów korby (liczniki 16-bitowe zawijają się); null, gdy nie było nowego obrotu. */
+export function crankCadence(prev: { revs: number; time: number }, cur: { revs: number; time: number }): number | null {
+  const dRevs = (cur.revs - prev.revs + 0x10000) & 0xffff;
+  const dTime = (cur.time - prev.time + 0x10000) & 0xffff;
+  if (dRevs === 0 || dTime === 0) return null;
+  const rpm = (dRevs * 60 * 1024) / dTime;
+  return rpm > 250 ? null : rpm;
+}

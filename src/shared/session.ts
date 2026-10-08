@@ -10,6 +10,8 @@ export interface Sample {
   hr: number | null;
   /** moc docelowa, W; null = jazda swobodna */
   target: number | null;
+  /** udział lewej nogi w %, gdy są obustronne pedały mocy */
+  balance?: number | null;
 }
 
 export interface SessionSummary {
@@ -24,6 +26,8 @@ export interface SessionSummary {
   avgHr: number | null;
   maxHr: number | null;
   avgCadence: number | null;
+  /** średni udział lewej nogi ważony mocą, %; null bez pedałów z balansem */
+  avgBalance?: number | null;
 }
 
 export interface SessionInput {
@@ -72,6 +76,15 @@ export function summarize(samples: readonly Sample[], ftp: number): SessionSumma
   const cads = samples.map((s) => s.cadence).filter((c): c is number => c !== null && c > 0);
   const avgHr = avgOf(hrs);
   const avgCad = avgOf(cads);
+  // Balans ważony mocą: sekundy mocnego pedałowania liczą się bardziej niż luźne kręcenie.
+  let balW = 0;
+  let balSum = 0;
+  for (const s of samples) {
+    if (s.balance != null && s.power) {
+      balW += s.power;
+      balSum += s.power * s.balance;
+    }
+  }
 
   return {
     duration: n,
@@ -84,6 +97,7 @@ export function summarize(samples: readonly Sample[], ftp: number): SessionSumma
     avgHr: avgHr === null ? null : Math.round(avgHr),
     maxHr: hrs.length ? Math.max(...hrs) : null,
     avgCadence: avgCad === null ? null : Math.round(avgCad),
+    avgBalance: balW > 0 ? Math.round((balSum / balW) * 10) / 10 : null,
   };
 }
 
@@ -113,7 +127,7 @@ export function checkSessionInput(b: unknown): string | null {
   if (o.samples.length > 24 * 3600) return 'Sesja jest zbyt długa';
   for (const s of o.samples as unknown[]) {
     const x = s as Record<string, unknown>;
-    if (!x || !isNum(x.t, 0, 24 * 3600) || !numOrNull(x.power, 5000) || !numOrNull(x.cadence, 300) || !numOrNull(x.hr, 300) || !numOrNull(x.target, 5000)) {
+    if (!x || !isNum(x.t, 0, 24 * 3600) || !numOrNull(x.power, 5000) || !numOrNull(x.cadence, 300) || !numOrNull(x.hr, 300) || !numOrNull(x.target, 5000) || (x.balance !== undefined && !numOrNull(x.balance, 100))) {
       return 'Niepoprawna próbka danych';
     }
   }

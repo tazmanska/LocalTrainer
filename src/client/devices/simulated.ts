@@ -29,6 +29,7 @@ export class SimulatedSource implements DataSource {
   private power = 0;
   private cadence = 0;
   private hr: number;
+  private balance = 50.5;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<(r: Reading) => void>();
   private readonly rand: () => number;
@@ -43,6 +44,7 @@ export class SimulatedSource implements DataSource {
     return [
       { label: 'Symulowany trenażer', kind: 'trainer', connected: on, state: on ? 'connected' : 'idle' },
       { label: 'Symulowany pas HR', kind: 'hr', connected: on, state: on ? 'connected' : 'idle' },
+      { label: 'Symulowane pedały', kind: 'pedals', connected: on, state: on ? 'connected' : 'idle' },
     ];
   }
 
@@ -84,7 +86,16 @@ export class SimulatedSource implements DataSource {
     this.cadence = Math.max(0, this.cadence + (cadGoal - this.cadence) * 0.35 + (r() - 0.5) * 4);
     const hrGoal = maxHr * (0.5 + 0.45 * Math.min(1, Math.max(0, (intensity - 0.35) / 0.9)));
     this.hr = this.hr + (hrGoal - this.hr) * 0.04 + (r() - 0.5) * 1.2;
-    return { power: Math.round(this.power), cadence: Math.round(this.cadence), hr: Math.round(this.hr) };
+    // Balans L/P jak z obustronnych pedałów: lekka przewaga lewej nogi, rosnąca przy dużej intensywności.
+    this.balance = this.balance + (50.5 + Math.max(0, intensity - 0.9) * 3 - this.balance) * 0.2 + (r() - 0.5) * 1.5;
+    const power = Math.round(this.power);
+    return {
+      power,
+      cadence: Math.round(this.cadence),
+      hr: Math.round(this.hr),
+      pedalPower: power,
+      balance: Math.round(this.balance * 2) / 2,
+    };
   }
 
   private emit(r: Reading) {

@@ -4,6 +4,9 @@
 
 import {
   ANT_ACKNOWLEDGED_DATA,
+  crankCadence,
+  CYCLING_POWER_MEASUREMENT,
+  CYCLING_POWER_SERVICE,
   ANT_BROADCAST_DATA,
   buildAntFrame,
   decodeFecPage,
@@ -28,6 +31,7 @@ import {
   parseControlPointResponse,
   parseHeartRate,
   parseIndoorBikeData,
+  parsePowerMeasurement,
   RESULT_CONTROL_NOT_PERMITTED,
   RESULT_SUCCESS,
   TACX_FEC_NOTIFY,
@@ -444,48 +448,148 @@ export class BleHeartRate extends BleDevice {
   };
 }
 
+/** Pedały lub korba pomiarowa (Cycling Power Service), np. Favero Assioma Duo: moc, balans L/P i kadencja z korby. */
+export class BlePowerMeter extends BleDevice {
+  private ch: BluetoothRemoteGATTCharacteristic | null = null;
+  private lastCrank: { revs: number; time: number } | null = null;
+  private lastCrankMoveAt = 0;
+  private cadence: number | null = null;
+
+  constructor(
+    changed: () => void,
+    private readonly emit: (r: { pedalPower: number | null; balance: number | null; cadence: number | null }) => void,
+  ) {
+    super('trenazer:pedals', 'pedałami mocy', changed);
+  }
+
+  protected requestOptions(): RequestDeviceOptions {
+    return { filters: [{ services: [CYCLING_POWER_SERVICE] }] };
+  }
+
+  protected async setup(device: BluetoothDevice) {
+    const service = await getService(device, CYCLING_POWER_SERVICE);
+    this.ch = await service!.getCharacteristic(CYCLING_POWER_MEASUREMENT);
+    this.ch.addEventListener('characteristicvaluechanged', this.onMeasurement);
+    await this.ch.startNotifications();
+  }
+
+  protected teardown() {
+    this.ch?.removeEventListener('characteristicvaluechanged', this.onMeasurement);
+    this.ch = null;
+    this.lastCrank = null;
+    this.cadence = null;
+    this.emit({ pedalPower: null, balance: null, cadence: null });
+  }
+
+  private onMeasurement = (e: Event) => {
+    const m = parsePowerMeasurement((e.target as BluetoothRemoteGATTCharacteristic).value!);
+    if (!m) return;
+    const now = Date.now();
+    if (m.crank) {
+      if (this.lastCrank) {
+        const rpm = crankCadence(this.lastCrank, m.crank);
+        if (rpm !== null) {
+          this.cadence = rpm;
+          this.lastCrankMoveAt = now;
+        }
+      }
+      this.lastCrank = m.crank;
+      // brak nowego obrotu korby przez 3 s = kolarz nie pedałuje
+      if (now - this.lastCrankMoveAt > 3000) this.cadence = 0;
+    }
+    this.emit({ pedalPower: Math.max(0, m.power), balance: m.balanceLeft, cadence: m.crank ? Math.round(this.cadence ?? 0) : null });
+  };
+}
+
+export type PowerSource = 'pedals' | 'trainer';
+const POWER_SOURCE_KEY = 'trenazer:power-source';
+
 /** Źródło danych z prawdziwych urządzeń; żyje przez całą sesję przeglądarki, niezależnie od ekranu treningu. */
 export class BleSource implements DataSource {
   readonly id = 'ble' as const;
   readonly trainer: BleTrainer;
   readonly heartRate: BleHeartRate;
+  readonly pedals: BlePowerMeter;
   private readings = new Set<(r: Reading) => void>();
   private changes = new Set<() => void>();
-  private strapHr: number | null = null;
+  private source: PowerSource;
 
   constructor() {
     const changed = () => this.changes.forEach((cb) => cb());
+    try {
+      this.source = localStorage.getItem(POWER_SOURCE_KEY) === 'trainer' ? 'trainer' : 'pedals';
+    } catch {
+      this.source = 'pedals';
+    }
     this.trainer = new BleTrainer(changed, ({ trainerHr, ...r }) => {
+      const out: Reading = {};
+      // Moc i kadencja z trenażera, chyba że mierzą je podłączone pedały wybrane jako źródło mocy.
+      if (!this.pedalsArePowerSource) {
+        if (r.power !== undefined) out.power = r.power;
+        if (r.cadence !== undefined) out.cadence = r.cadence;
+      }
       // Tętno z trenażera (gdy przekazuje je z własnego odbiornika) tylko wtedy, gdy nie ma osobnego pasa.
-      const out: Reading = { ...r };
       if (this.heartRate.state !== 'connected' && trainerHr !== undefined) out.hr = trainerHr;
-      this.emit(out);
+      if (Object.keys(out).length) this.emit(out);
     });
-    this.heartRate = new BleHeartRate(changed, (hr) => {
-      this.strapHr = hr;
-      this.emit({ hr });
+    this.heartRate = new BleHeartRate(changed, (hr) => this.emit({ hr }));
+    this.pedals = new BlePowerMeter(changed, ({ pedalPower, balance, cadence }) => {
+      const out: Reading = { pedalPower, balance };
+      if (this.pedalsArePowerSource || pedalPower === null) {
+        out.power = pedalPower;
+        if (cadence !== null || pedalPower === null) out.cadence = cadence;
+      }
+      this.emit(out);
     });
   }
 
+  get powerSource(): PowerSource {
+    return this.source;
+  }
+
+  set powerSource(s: PowerSource) {
+    this.source = s;
+    try {
+      localStorage.setItem(POWER_SOURCE_KEY, s);
+    } catch {
+      // wybór wróci do domyślnego po odświeżeniu
+    }
+    this.changes.forEach((cb) => cb());
+  }
+
+  private get pedalsArePowerSource() {
+    return this.source === 'pedals' && this.pedals.state === 'connected';
+  }
+
   devices(): DeviceInfo[] {
-    const info = (d: BleDevice, kind: 'trainer' | 'hr', fallback: string): DeviceInfo => ({
+    const info = (d: BleDevice, kind: DeviceInfo['kind'], fallback: string): DeviceInfo => ({
       label: d.label || fallback,
       kind,
       connected: d.state === 'connected',
       state: d.state,
       message: d.message,
     });
-    return [info(this.trainer, 'trainer', 'Trenażer'), info(this.heartRate, 'hr', 'Pas tętna')];
+    const list = [info(this.trainer, 'trainer', 'Trenażer'), info(this.heartRate, 'hr', 'Pas tętna')];
+    // pedały pokazujemy na ekranie treningu tylko wtedy, gdy są używane
+    return this.pedals.state === 'idle' ? list : [...list, info(this.pedals, 'pedals', 'Pedały')];
+  }
+
+  /** Pełna lista urządzeń do panelu łączenia, łącznie z niepodłączonymi pedałami. */
+  allDevices(): DeviceInfo[] {
+    const [t, h] = this.devices() as [DeviceInfo, DeviceInfo];
+    const p = this.pedals;
+    return [t, h, { label: p.label || 'Pedały mocy', kind: 'pedals', connected: p.state === 'connected', state: p.state, message: p.message }];
   }
 
   /** Ciche połączenie z zapamiętanymi urządzeniami. */
   async connect() {
-    await Promise.all([this.trainer.reconnectSaved(), this.heartRate.reconnectSaved()]);
+    await Promise.all([this.trainer.reconnectSaved(), this.heartRate.reconnectSaved(), this.pedals.reconnectSaved()]);
   }
 
   disconnect() {
     this.trainer.disconnect();
     this.heartRate.disconnect();
+    this.pedals.disconnect();
   }
 
   setTargetPower(watts: number | null) {
@@ -504,10 +608,6 @@ export class BleSource implements DataSource {
     return () => {
       this.changes.delete(cb);
     };
-  }
-
-  get lastStrapHr() {
-    return this.strapHr;
   }
 
   private emit(r: Reading) {

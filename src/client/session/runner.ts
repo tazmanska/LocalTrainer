@@ -78,6 +78,7 @@ export class WorkoutRunner {
       cadence: r.cadence ?? null,
       hr: r.hr ?? null,
       target: this.targetWatts(),
+      ...(r.balance != null ? { balance: r.balance } : {}),
     });
     this.elapsed++;
     if (this.finished) this.running = false;

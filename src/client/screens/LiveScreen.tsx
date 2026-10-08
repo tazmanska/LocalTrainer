@@ -34,6 +34,8 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   source.current ??= ble ?? new SimulatedSource({ ftp: profile.ftp, maxHr: profile.maxHr });
   const latest = useRef<Reading>({});
   const powerBuf = useRef<number[]>([]);
+  /** ostatnie odczyty pedałów (moc i udział lewej nogi) do średniej 3 s */
+  const pedalBuf = useRef<{ p: number; b: number }[]>([]);
   const [, setFrame] = useState(0);
   const [ending, setEnding] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,6 +48,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   useEffect(() => {
     const off = src.onReading((x) => {
       latest.current = { ...latest.current, ...x };
+      if (x.pedalPower === null || x.balance === null) pedalBuf.current = [];
+      else if (x.pedalPower !== undefined && x.balance !== undefined) {
+        pedalBuf.current.push({ p: x.pedalPower, b: x.balance });
+        if (pedalBuf.current.length > POWER_AVG_WINDOW) pedalBuf.current.shift();
+      }
       if (x.power === null) powerBuf.current = [];
       else if (x.power !== undefined) {
         powerBuf.current.push(x.power);
@@ -155,6 +162,16 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const hz = zoneIndex(HR_ZONES, profile.maxHr, hr);
   const cadence = latest.current.cadence ?? 0;
   const recent = r.samples.slice(-SPARK_WINDOW);
+  // Moc lewej i prawej nogi z pedałów (średnia 3 s), balans liczony z tych średnich.
+  const pb = pedalBuf.current;
+  const legs = pb.length
+    ? (() => {
+        const left = pb.reduce((a, x) => a + (x.p * x.b) / 100, 0) / pb.length;
+        const right = pb.reduce((a, x) => a + (x.p * (100 - x.b)) / 100, 0) / pb.length;
+        const bal = left + right > 0 ? (left / (left + right)) * 100 : 50;
+        return { left: Math.round(left), right: Math.round(right), bal };
+      })()
+    : null;
   // „Do końca etapu” ma szerokość najdłuższego etapu treningu (m:ss, mm:ss albo h:mm:ss).
   const longestSeg = Math.max(...workout.segments.map((s) => s.duration));
   const segClockChars = longestSeg >= 3600 ? 7 : longestSeg >= 600 ? 5 : 4;
@@ -259,9 +276,12 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
               {POWER_ZONES[pz]!.id} {POWER_ZONES[pz]!.name}
             </span>
           </div>
-          <div className="num mega">
-            <Fixed d={3}>{power}</Fixed>
-            <span className="unit">W</span>
+          <div className={legs ? 'power-main with-legs' : 'power-main'}>
+            <div className="num mega">
+              <Fixed d={3}>{power}</Fixed>
+              <span className="unit">W</span>
+            </div>
+            {legs && <LegPower {...legs} />}
           </div>
           <div className="delta">
             {delta !== null && (
@@ -446,5 +466,33 @@ function Fixed({ d, left, children }: { d: number; left?: boolean; children: Rea
     <span className={left ? 'fx left' : 'fx'} style={{ '--d': d } as React.CSSProperties}>
       {children}
     </span>
+  );
+}
+
+/** Moc lewej i prawej nogi oraz balans z obustronnych pedałów, przy prawej krawędzi kafelka mocy. */
+function LegPower({ left, right, bal }: { left: number; right: number; bal: number }) {
+  const l = Math.round(bal);
+  // znacznik na pasku: środek = 50/50, przesunięcie w stronę mocniejszej nogi (pełna skala ±10 pkt %)
+  const offset = Math.max(-1, Math.min(1, (50 - bal) / 10)) * 50;
+  return (
+    <div className="legs" aria-label={`Moc lewa ${left} W, prawa ${right} W, balans ${l} do ${100 - l}`}>
+      <div className="leg">
+        <span className="side-l">L</span>
+        <Fixed d={3}>{left}</Fixed>
+        <span className="unit">W</span>
+      </div>
+      <div className="leg">
+        <span className="side-l">P</span>
+        <Fixed d={3}>{right}</Fixed>
+        <span className="unit">W</span>
+      </div>
+      <div className="balbar">
+        <span className="mid" />
+        <span className="mk" style={{ left: `${50 + offset}%` }} />
+      </div>
+      <div className="bal">
+        <Fixed d={2}>{l}</Fixed> / <Fixed d={2} left>{100 - l}</Fixed>
+      </div>
+    </div>
   );
 }

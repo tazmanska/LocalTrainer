@@ -22,7 +22,7 @@ Dane trafiają do katalogu podmontowanego jako `/data` (`profile.json`, `workout
 
 - `src/shared` – logika wspólna (profil, walidacja, strefy mocy i tętna)
 - `src/server` – Fastify: profil, treningi (import ZWO), historia sesji z eksportem TCX/GPX, serwowanie zbudowanego frontendu
-- `src/client` – React + Vite; `devices/` to wymienne źródło danych: symulacja albo Bluetooth (trenażer FTMS / Tacx FE-C z trybem ERG, pas tętna; na podstawie GPX Rider, MIT, zob. THIRD_PARTY_NOTICES.md), `session/runner.ts` to przebieg treningu
+- `src/client` – React + Vite; `devices/` to wymienne źródło danych: symulacja albo Bluetooth (trenażer FTMS / Tacx FE-C z trybem ERG, pas tętna, pedały mocy z balansem L/P; na podstawie GPX Rider, MIT, zob. THIRD_PARTY_NOTICES.md), `session/runner.ts` to przebieg treningu
 
 ## Bluetooth
 

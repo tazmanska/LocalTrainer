@@ -152,3 +152,22 @@ main.full { max-width: none; }
 .fx { display: inline-block; min-width: calc(var(--d, 3) * 1ch); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fx.left { text-align: left; }
 .delta, .tile .sub { font-variant-numeric: tabular-nums; }
+
+/* Moc lewej i prawej nogi z pedałów, przy prawej krawędzi kafelka mocy */
+.power-main { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-block: auto; }
+.power-main .mega { margin-block: 0; }
+.legs {
+  display: grid; gap: 0.35rem; padding: 0.6rem 0.8rem; border-radius: 8px; flex: none;
+  background: color-mix(in oklab, var(--bg) 55%, transparent); border: 1px solid var(--line);
+  font-family: var(--f-num); font-weight: 700; font-size: clamp(1.3rem, min(2.2vw, 3.8vh), 5rem); line-height: 1;
+}
+.legs .leg { display: flex; align-items: baseline; gap: 0.35em; }
+.legs .side-l { font-size: 0.6em; color: var(--muted); width: 1em; }
+.legs .unit { font-size: 0.55em; }
+.balbar { position: relative; height: 0.35em; border-radius: 3px; background: var(--panel-2); margin-top: 0.15em; }
+.balbar .mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--muted); transform: translateX(-1px); }
+.balbar .mk { position: absolute; top: -3px; bottom: -3px; width: 4px; border-radius: 2px; background: var(--zc, var(--accent)); transform: translateX(-2px); transition: left 0.5s; }
+.legs .bal { font-size: 0.75em; color: var(--muted); text-align: center; }
+.power-main .mega { white-space: nowrap; min-width: 0; }
+/* z kolumną L/P liczba mocy jest nieco mniejsza, żeby obie zmieściły się w kafelku */
+.power-main.with-legs .mega { font-size: clamp(5rem, min(11.5vw, 24vh), 28rem); }

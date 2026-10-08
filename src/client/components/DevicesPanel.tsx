@@ -45,7 +45,7 @@ interface Props {
 export function DevicesPanel({ mode, onMode, ble }: Props) {
   useDeviceChanges(ble);
   const unavailable = bluetoothUnavailable();
-  const [trainer, hr] = ble.devices() as [DeviceInfo, DeviceInfo];
+  const [trainer, hr, pedals] = ble.allDevices() as [DeviceInfo, DeviceInfo, DeviceInfo];
   const rows: { info: DeviceInfo; sub: string; pair: () => void; drop: () => void }[] = [
     {
       info: trainer,
@@ -54,6 +54,12 @@ export function DevicesPanel({ mode, onMode, ble }: Props) {
       drop: () => ble.trainer.disconnect(),
     },
     { info: hr, sub: 'Pas tętna · Heart Rate Service', pair: () => void ble.heartRate.pair(), drop: () => ble.heartRate.disconnect() },
+    {
+      info: pedals,
+      sub: 'Pedały mocy · Cycling Power · moc L/P i balans',
+      pair: () => void ble.pedals.pair(),
+      drop: () => ble.pedals.disconnect(),
+    },
   ];
 
   return (
@@ -101,11 +107,24 @@ export function DevicesPanel({ mode, onMode, ble }: Props) {
                 </button>
               ) : (
                 <button className="btn primary" type="button" onClick={pair} disabled={info.state === 'connecting'}>
-                  {info.kind === 'trainer' ? 'Połącz trenażer' : 'Połącz pas'}
+                  {info.kind === 'trainer' ? 'Połącz trenażer' : info.kind === 'hr' ? 'Połącz pas' : 'Połącz pedały'}
                 </button>
               )}
             </div>
           ))}
+          {pedals.connected && (
+            <div className="devhead">
+              <span className="small muted">Moc, strefy i zapis sesji z:</span>
+              <div className="seg" role="radiogroup" aria-label="Źródło mocy">
+                <button type="button" role="radio" aria-checked={ble.powerSource === 'pedals'} onClick={() => (ble.powerSource = 'pedals')}>
+                  Pedałów
+                </button>
+                <button type="button" role="radio" aria-checked={ble.powerSource === 'trainer'} onClick={() => (ble.powerSource = 'trainer')}>
+                  Trenażera
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

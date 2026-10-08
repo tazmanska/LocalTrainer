@@ -15,6 +15,10 @@ import {
   parseControlPointResponse,
   parseHeartRate,
   parseIndoorBikeData,
+  parsePowerMeasurement,
+  crankCadence,
+  CYCLING_POWER_MEASUREMENT,
+  CYCLING_POWER_SERVICE,
 } from './protocol';
 import type { Reading } from './source';
 
@@ -45,6 +49,26 @@ describe('kodeki FTMS', () => {
   it('czyta odpowiedź punktu sterowania', () => {
     expect(parseControlPointResponse(dv(0x80, 0x05, 0x05))).toEqual({ opcode: 0x05, result: 0x05 });
     expect(parseControlPointResponse(dv(0x05, 0xfa, 0x00))).toBeNull();
+  });
+});
+
+describe('Cycling Power (pedały)', () => {
+  it('czyta moc, balans lewej nogi i dane korby', () => {
+    // flagi 0x0023: balans, odniesienie = lewa, dane korby; moc 280 W, balans 102 * 0,5% = 51%, korba 1000 obr., czas 2048
+    const m = parsePowerMeasurement(dv(0x23, 0x00, 0x18, 0x01, 102, 0xe8, 0x03, 0x00, 0x08));
+    expect(m).toEqual({ power: 280, balanceLeft: 51, crank: { revs: 1000, time: 2048 } });
+  });
+
+  it('bez balansu i z pominięciem pól momentu i koła', () => {
+    // flagi 0x0034: moment (2 B), koło (6 B), korba
+    const m = parsePowerMeasurement(dv(0x34, 0x00, 0xc8, 0x00, 1, 2, 1, 2, 3, 4, 5, 6, 0x0a, 0x00, 0x00, 0x04));
+    expect(m).toEqual({ power: 200, balanceLeft: null, crank: { revs: 10, time: 1024 } });
+  });
+
+  it('liczy kadencję z korby, także po zawinięciu liczników', () => {
+    expect(crankCadence({ revs: 10, time: 0 }, { revs: 11, time: 683 })).toBeCloseTo(90, 0);
+    expect(crankCadence({ revs: 0xffff, time: 0xff00 }, { revs: 0, time: 0x01ab })).toBeCloseTo(90, 0);
+    expect(crankCadence({ revs: 10, time: 100 }, { revs: 10, time: 100 })).toBeNull();
   });
 });
 
@@ -156,6 +180,28 @@ describe('BleSource', () => {
     bike.push(dv(0x40, 0x02, 0x00, 0x00, 0x64, 0x00, 0x78));
     expect(readings.at(-2)).toEqual({ hr: 133 });
     expect(readings.at(-1)).toEqual({ power: 100, cadence: null });
+  });
+
+  it('pedały jako źródło mocy zastępują moc trenażera, a po przełączeniu wraca moc trenażera', async () => {
+    const bike = new FakeChar();
+    const pm = new FakeChar();
+    const src = new BleSource();
+    src.powerSource = 'pedals';
+    const readings: Reading[] = [];
+    src.onReading((r) => readings.push(r));
+    await src.trainer.connectDevice(fakeDevice({ [FTMS_SERVICE]: { [FTMS_CONTROL_POINT]: new FakeChar(), [FTMS_INDOOR_BIKE_DATA]: bike } }));
+    await src.pedals.connectDevice(fakeDevice({ [CYCLING_POWER_SERVICE]: { [CYCLING_POWER_MEASUREMENT]: pm } }));
+
+    pm.push(dv(0x03, 0x00, 0x18, 0x01, 102));
+    expect(readings.at(-1)).toEqual({ pedalPower: 280, balance: 51, power: 280 });
+    bike.push(dv(0x44, 0x00, 0xc4, 0x09, 0xb4, 0x00, 0xfa, 0x00));
+    expect(readings.at(-1)).toEqual({ hr: null }); // moc i kadencja z trenażera pominięte
+
+    src.powerSource = 'trainer';
+    bike.push(dv(0x44, 0x00, 0xc4, 0x09, 0xb4, 0x00, 0xfa, 0x00));
+    expect(readings.at(-1)).toMatchObject({ power: 250, cadence: 90 });
+    pm.push(dv(0x03, 0x00, 0x18, 0x01, 102));
+    expect(readings.at(-1)).toEqual({ pedalPower: 280, balance: 51 });
   });
 
   it('trenażer bez FTMS i FE-C daje czytelny błąd', async () => {
