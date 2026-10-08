@@ -155,6 +155,9 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const hz = zoneIndex(HR_ZONES, profile.maxHr, hr);
   const cadence = latest.current.cadence ?? 0;
   const recent = r.samples.slice(-SPARK_WINDOW);
+  // „Do końca etapu” ma szerokość najdłuższego etapu treningu (m:ss, mm:ss albo h:mm:ss).
+  const longestSeg = Math.max(...workout.segments.map((s) => s.duration));
+  const segClockChars = longestSeg >= 3600 ? 7 : longestSeg >= 600 ? 5 : 4;
   const sparkPowerMax = Math.max(profile.ftp * 1.3, ...recent.map((s) => Math.max(s.power ?? 0, s.target ?? 0))) * 1.05;
   const cadAvg = r.samples.length
     ? Math.round(r.samples.reduce((a, s) => a + (s.cadence ?? 0), 0) / r.samples.length)
@@ -202,7 +205,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
           <div className="target">
             <div className="lbl">Moc docelowa</div>
             <div className="num">
-              {tgtW ?? '–'}
+              <Fixed d={3}>{tgtW ?? '–'}</Fixed>
               <span className="unit">W</span>
             </div>
             <div className="sub">
@@ -215,7 +218,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
           </div>
           <div className="stage-left">
             <div className="lbl">Do końca etapu</div>
-            <div className="num">{fmtTime(r.segmentRemaining)}</div>
+            <div className="num">
+              <Fixed d={segClockChars} left>
+                {fmtTime(r.segmentRemaining)}
+              </Fixed>
+            </div>
           </div>
           <div className="bar">
             <span style={{ width: `${(r.segmentElapsed / seg.duration) * 100}%` }} />
@@ -253,17 +260,20 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
             </span>
           </div>
           <div className="num mega">
-            {power}
+            <Fixed d={3}>{power}</Fixed>
             <span className="unit">W</span>
           </div>
           <div className="delta">
             {delta !== null && (
               <>
-                cel <b>{tgtW} W</b> · {delta > 0 ? '+' : delta < 0 ? '−' : '±'}
-                {Math.abs(delta)} W ·{' '}
+                cel{' '}
+                <b>
+                  <Fixed d={3}>{tgtW}</Fixed> W
+                </b>{' '}
+                · <Fixed d={4}>{`${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${Math.abs(delta)}`}</Fixed> W ·{' '}
               </>
             )}
-            {pl(power / profile.weight, 1)} W/kg
+            <Fixed d={4}>{pl(power / profile.weight, 1)}</Fixed> W/kg
           </div>
           <ZoneScale zones={POWER_ZONES} reference={profile.ftp} value={power} color={(i) => `var(--z${i + 1})`} ticks={POWER_ZONES.map((z) => z.id)} />
         </div>
@@ -274,10 +284,14 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
             <div className="lbl">Kadencja</div>
             <div className="row">
               <div className="num">
-                {cadence}
+                <Fixed d={3}>{cadence}</Fixed>
                 <span className="unit">rpm</span>
               </div>
-              {cadAvg !== null && <span className="sub">śr. {cadAvg}</span>}
+              {cadAvg !== null && (
+                <span className="sub">
+                  śr. <Fixed d={3}>{cadAvg}</Fixed>
+                </span>
+              )}
             </div>
           </div>
           <div className="panel tile metric hr">
@@ -296,10 +310,14 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
             </div>
             <div className="row">
               <div className="num">
-                {hr || '–'}
+                <Fixed d={3}>{hr || '–'}</Fixed>
                 <span className="unit">bpm</span>
               </div>
-              {hr > 0 && <span className="sub">{Math.round((hr / profile.maxHr) * 100)}% HRmax</span>}
+              {hr > 0 && (
+                <span className="sub">
+                  <Fixed d={3}>{Math.round((hr / profile.maxHr) * 100)}</Fixed>% HRmax
+                </span>
+              )}
             </div>
             <ZoneScale
               zones={HR_ZONES}
@@ -418,3 +436,15 @@ function ZoneScale(props: { zones: readonly ZoneDef[]; reference: number; value:
   );
 }
 
+
+/**
+ * Liczba o stałej szerokości (w znakach cyfry), wyrównana do prawej, żeby jednostka i sąsiednie elementy
+ * nie przesuwały się przy zmianie liczby cyfr (np. 99 → 100 W).
+ */
+function Fixed({ d, left, children }: { d: number; left?: boolean; children: React.ReactNode }) {
+  return (
+    <span className={left ? 'fx left' : 'fx'} style={{ '--d': d } as React.CSSProperties}>
+      {children}
+    </span>
+  );
+}

@@ -147,3 +147,8 @@ main.full { max-width: none; }
 .certpanel summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
 .certpanel ol { margin: 0.5rem 0 0; padding-left: 1.3rem; display: grid; gap: 0.3rem; font-size: 0.88rem; color: var(--muted); }
 .err a { color: inherit; font-weight: 600; }
+
+/* Liczby o stałej szerokości: cyfry tabelaryczne mają szerokość 1ch, więc pole mieści d cyfr bez przesuwania jednostki. */
+.fx { display: inline-block; min-width: calc(var(--d, 3) * 1ch); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fx.left { text-align: left; }
+.delta, .tile .sub { font-variant-numeric: tabular-nums; }
