@@ -171,3 +171,41 @@ main.full { max-width: none; }
 .power-main .mega { white-space: nowrap; min-width: 0; }
 /* z kolumną L/P liczba mocy jest nieco mniejsza, żeby obie zmieściły się w kafelku */
 .power-main.with-legs .mega { font-size: clamp(5rem, min(11.5vw, 24vh), 28rem); }
+
+/* Kolor balansu: zielony do 2 pkt różnicy, żółty do 4, czerwony od 6 */
+.legs.good { --bal: var(--ok); }
+.legs.warn { --bal: var(--warn); }
+.legs.bad { --bal: var(--z6); }
+.legs .leg .fx, .legs .bal { color: var(--bal); transition: color 0.4s; }
+.balbar .mk { background: var(--bal, var(--accent)); }
+.legs.bad { border-color: color-mix(in oklab, var(--z6) 55%, var(--line)); }
+
+/* Kolor kadencji */
+.cad.good .num { color: var(--ok); }
+.cad.warn .num { color: var(--warn); }
+.cad.bad .num { color: var(--z6); }
+.cad .num { transition: color 0.4s; }
+.cad .num .unit { color: var(--muted); }
+
+/* Tętno w kolorze strefy, jak moc: liczba, tło i obramowanie kafelka */
+.metric.hr.zoned {
+  background: color-mix(in oklab, var(--zc) 11%, var(--panel));
+  border-color: color-mix(in oklab, var(--zc) 45%, var(--line));
+  transition: background 0.6s, border-color 0.6s;
+}
+.metric.hr.zoned .num { color: var(--zc); transition: color 0.6s; }
+.metric.hr.zoned .num .unit { color: var(--muted); }
+
+/* Słabsza noga: podkreślona wartość w kolorze balansu, mocniejsza przygaszona */
+.legs .bal .fx { color: var(--muted); }
+.legs .bal .weak .fx { color: var(--bal); text-decoration: underline; text-decoration-thickness: 0.12em; text-underline-offset: 0.18em; }
+.legs .leg .fx { color: var(--fg); }
+.legs .leg.weak .fx { color: var(--bal); text-decoration: underline; text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
+.legs .leg.weak .side-l { color: var(--bal); }
+.legs .bal { color: var(--muted); }
+
+/* Moc odbiega od celu o więcej niż 9 W */
+.power.off-target {
+  border-color: var(--z6);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--z6) 70%, transparent), 0 0 24px color-mix(in oklab, var(--z6) 35%, transparent);
+}

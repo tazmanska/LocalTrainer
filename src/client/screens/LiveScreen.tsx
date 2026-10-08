@@ -9,7 +9,8 @@ import { WorkoutChart } from '../components/WorkoutChart';
 import type { BleSource } from '../devices/ble';
 import { SimulatedSource } from '../devices/simulated';
 import type { DataSource, Reading } from '../devices/source';
-import { fmtTime, pl } from '../format';
+import { balanceLevel, cadenceLevel, fmtTime, pl } from '../format';
+import { countdownBeep, loadMuted, segmentStartBeep, storeMuted, unlockAudio } from '../sound';
 import { WorkoutRunner } from '../session/runner';
 
 interface Props {
@@ -24,6 +25,9 @@ interface Props {
 }
 
 const POWER_AVG_WINDOW = 3;
+/** dopuszczalna różnica mocy względem celu, W */
+const OFF_TARGET_W = 9;
+const CAD_COLORS = { good: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--z6)' } as const;
 /** okno wykresów w tle kafelków, s */
 const SPARK_WINDOW = 180;
 
@@ -40,6 +44,9 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const [ending, setEnding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [muted, setMuted] = useState(loadMuted);
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   const redraw = () => setFrame((f) => f + 1);
 
   const r = runner.current;
@@ -64,6 +71,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
     const timer = setInterval(() => {
       if (r.running) {
         r.tick(latest.current);
+        // Sygnał: pik w każdej z ostatnich 5 s etapu, dłuższy wyższy ton na starcie kolejnego etapu i na końcu treningu.
+        if (!mutedRef.current) {
+          if (r.finished || r.segmentElapsed === 0) segmentStartBeep();
+          else if (r.segmentRemaining >= 1 && r.segmentRemaining <= 5) countdownBeep();
+        }
         src.setTargetPower(r.targetWatts());
         if (r.finished) setEnding(true);
       }
@@ -91,6 +103,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
     if (r.running) r.pause();
     else {
       r.start();
+      unlockAudio();
       src.setTargetPower(r.targetWatts());
     }
     redraw();
@@ -176,12 +189,16 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const longestSeg = Math.max(...workout.segments.map((s) => s.duration));
   const segClockChars = longestSeg >= 3600 ? 7 : longestSeg >= 600 ? 5 : 4;
   const sparkPowerMax = Math.max(profile.ftp * 1.3, ...recent.map((s) => Math.max(s.power ?? 0, s.target ?? 0))) * 1.05;
+  // Kolor kadencji: powyżej 85 zielony, 81–85 żółty, 80 i mniej czerwony (szary, gdy brak odczytu).
+  const cadLevel = latest.current.cadence == null ? '' : cadenceLevel(cadence);
   const cadAvg = r.samples.length
     ? Math.round(r.samples.reduce((a, s) => a + (s.cadence ?? 0), 0) / r.samples.length)
     : null;
   const tz = tgtPct === null ? null : zoneIndex(POWER_ZONES, 100, tgtPct * 100);
   const delta = tgtW === null ? null : power - tgtW;
   const started = r.startedAt !== null;
+  // Czerwona obwódka, gdy w trakcie jazdy moc odbiega od celu o więcej niż 9 W.
+  const offTarget = r.running && delta !== null && Math.abs(delta) > OFF_TARGET_W;
   const summary = ending ? summarize(r.samples, profile.ftp) : null;
 
   return (
@@ -261,14 +278,17 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
           </div>
         </div>
 
-        <div className="panel tile power" style={{ '--zc': `var(--z${pz + 1})` } as React.CSSProperties}>
+        <div
+          className={offTarget ? 'panel tile power off-target' : 'panel tile power'}
+          style={{ '--zc': `var(--z${pz + 1})` } as React.CSSProperties}
+        >
           <Sparkline
             values={recent.map((s) => s.power)}
             reference={recent.map((s) => s.target)}
             window={SPARK_WINDOW}
             min={0}
             max={sparkPowerMax}
-            color="var(--zc)"
+            colorOf={(w) => `var(--z${zoneIndex(POWER_ZONES, profile.ftp, w) + 1})`}
           />
           <div className="head">
             <div className="lbl">Moc · śr. 3 s</div>
@@ -299,8 +319,8 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
         </div>
 
         <div className="side">
-          <div className="panel tile metric">
-            <Sparkline values={recent.map((s) => s.cadence)} window={SPARK_WINDOW} min={40} max={130} color="var(--accent)" />
+          <div className={`panel tile metric cad ${cadLevel}`}>
+            <Sparkline values={recent.map((s) => s.cadence)} window={SPARK_WINDOW} min={40} max={130} colorOf={(c) => CAD_COLORS[cadenceLevel(c)]} />
             <div className="lbl">Kadencja</div>
             <div className="row">
               <div className="num">
@@ -314,13 +334,16 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
               )}
             </div>
           </div>
-          <div className="panel tile metric hr">
+          <div
+            className={hr > 0 ? 'panel tile metric hr zoned' : 'panel tile metric hr'}
+            style={{ '--zc': `var(--h${hz + 1})` } as React.CSSProperties}
+          >
             <Sparkline
               values={recent.map((s) => (s.hr ? s.hr : null))}
               window={SPARK_WINDOW}
               min={Math.round(profile.maxHr * 0.45)}
               max={profile.maxHr}
-              color="var(--hr)"
+              colorOf={(h) => `var(--h${zoneIndex(HR_ZONES, profile.maxHr, h) + 1})`}
             />
             <div className="row">
               <div className="lbl">Tętno</div>
@@ -386,6 +409,18 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
           </button>
         </div>
         <span className="grow" />
+        <button
+          className="btn big"
+          type="button"
+          aria-pressed={!muted}
+          onClick={() => {
+            unlockAudio();
+            storeMuted(!muted);
+            setMuted(!muted);
+          }}
+        >
+          {muted ? 'Dźwięk: wył.' : 'Dźwięk: wł.'}
+        </button>
         <button className="btn big" type="button" onClick={fullscreen}>
           {isFull ? 'Zamknij pełny ekran' : 'Pełny ekran'}
         </button>
@@ -474,14 +509,17 @@ function LegPower({ left, right, bal }: { left: number; right: number; bal: numb
   const l = Math.round(bal);
   // znacznik na pasku: środek = 50/50, przesunięcie w stronę mocniejszej nogi (pełna skala ±10 pkt %)
   const offset = Math.max(-1, Math.min(1, (50 - bal) / 10)) * 50;
+  const level = balanceLevel(bal);
+  // Słabsza noga (mniejszy udział w %) jest wyróżniona; przy 50/50 żadna.
+  const weak = l < 50 ? 'L' : l > 50 ? 'P' : null;
   return (
-    <div className="legs" aria-label={`Moc lewa ${left} W, prawa ${right} W, balans ${l} do ${100 - l}`}>
-      <div className="leg">
+    <div className={`legs ${level}`} aria-label={`Moc lewa ${left} W, prawa ${right} W, balans ${l} do ${100 - l}`}>
+      <div className={weak === 'L' ? 'leg weak' : 'leg'}>
         <span className="side-l">L</span>
         <Fixed d={3}>{left}</Fixed>
         <span className="unit">W</span>
       </div>
-      <div className="leg">
+      <div className={weak === 'P' ? 'leg weak' : 'leg'}>
         <span className="side-l">P</span>
         <Fixed d={3}>{right}</Fixed>
         <span className="unit">W</span>
@@ -491,7 +529,15 @@ function LegPower({ left, right, bal }: { left: number; right: number; bal: numb
         <span className="mk" style={{ left: `${50 + offset}%` }} />
       </div>
       <div className="bal">
-        <Fixed d={2}>{l}</Fixed> / <Fixed d={2} left>{100 - l}</Fixed>
+        <span className={weak === 'L' ? 'weak' : undefined}>
+          <Fixed d={2}>{l}</Fixed>
+        </span>{' '}
+        /{' '}
+        <span className={weak === 'P' ? 'weak' : undefined}>
+          <Fixed d={2} left>
+            {100 - l}
+          </Fixed>
+        </span>
       </div>
     </div>
   );

@@ -31,3 +31,17 @@ export function plural(n: number, one: string, few: string, many: string): strin
   const t = n % 100;
   return `${n} ${d >= 2 && d <= 4 && !(t >= 12 && t <= 14) ? few : many}`;
 }
+
+export type Level = 'good' | 'warn' | 'bad';
+
+/** Balans L/P: różnica między nogami w pkt % (51/49 → 2): do 2 dobrze, do 4 uwaga, od 6 źle. */
+export function balanceLevel(leftPct: number): Level {
+  const l = Math.round(leftPct);
+  const diff = Math.abs(l - (100 - l));
+  return diff <= 2 ? 'good' : diff < 6 ? 'warn' : 'bad';
+}
+
+/** Kadencja: powyżej 85 dobrze, 81–85 uwaga, 80 i mniej źle. */
+export function cadenceLevel(rpm: number): Level {
+  return rpm > 85 ? 'good' : rpm > 80 ? 'warn' : 'bad';
+}
