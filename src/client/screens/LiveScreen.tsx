@@ -409,6 +409,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
           </button>
         </div>
         <span className="grow" />
+        {/* aktualna godzina; ekran przerysowuje się co sekundę, więc zegar nie potrzebuje własnego timera */}
+        <span className="wallclock" aria-label="Aktualna godzina">
+          {new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <span className="grow" />
         <button
           className="btn big"
           type="button"

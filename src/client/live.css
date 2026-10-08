@@ -209,3 +209,6 @@ main.full { max-width: none; }
   border-color: var(--z6);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--z6) 70%, transparent), 0 0 24px color-mix(in oklab, var(--z6) 35%, transparent);
 }
+
+/* Aktualna godzina na dolnym pasku */
+.wallclock { font-family: var(--f-num); font-weight: 700; font-size: 2.2rem; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
