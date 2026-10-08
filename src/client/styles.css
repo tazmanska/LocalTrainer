@@ -15,7 +15,8 @@
   --err: #ff8a8a;
   --z1: #8b98a5; --z2: #3d8bfd; --z3: #2fc06b; --z4: #f2c53d; --z5: #f5873a; --z6: #ef4b4b; --z7: #a463f2;
   --h1: #8b98a5; --h2: #3d8bfd; --h3: #2fc06b; --h4: #f5873a; --h5: #ef4b4b;
-  --f-num: 'Saira Condensed', 'Arial Narrow', Arial, sans-serif;
+  --f-num: 'Sofia Sans Condensed', 'Arial Narrow', Arial, sans-serif;
+  /* Sofia Sans Condensed ma cyfry tabelaryczne (wszystkie tej samej szerokości), więc liczby nie skaczą przy zmianie wartości. */
   --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
   --r: 10px;
