@@ -250,7 +250,8 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
                   : `${Math.round(tgtPct * 100)}% FTP`}
             </div>
           </div>
-          <div className="stage-left">
+          {/* czerwony czas w ostatnich 5 s etapu, razem z sygnałem dźwiękowym */}
+          <div className={!r.finished && r.segmentRemaining <= 5 ? 'stage-left ending' : 'stage-left'}>
             <div className="lbl">Do końca etapu</div>
             <div className="num">
               <Fixed d={segClockChars} left>
