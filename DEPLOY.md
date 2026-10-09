@@ -1,14 +1,16 @@
 # Wdrożenie na Synology (https://trenazer.local)
 
-Kontener na NAS (192.168.0.158) za reverse proxy DSM (nginx) z certyfikatem z własnym podpisem, jak `esphome.local`. Nazwę `trenazer.local` ogłasza w sieci sama aplikacja przez mDNS (zmienne `MDNS_HOSTNAME` i `MDNS_IP` w stacku), więc Chromebook i inne urządzenia znajdą ją bez pliku `hosts`. Certyfikat obejmuje też adres IP, więc awaryjnie działa https://192.168.0.158 przez osobny wpis proxy (niżej).
+Kontener na NAS (192.168.0.158) za reverse proxy DSM (nginx) z certyfikatem podpisanym przez własne lokalne CA. Nazwę `trenazer.local` ogłasza w sieci sama aplikacja przez mDNS (zmienne `MDNS_HOSTNAME` i `MDNS_IP` w stacku), więc Chromebook i inne urządzenia znajdą ją bez pliku `hosts`. Certyfikat obejmuje też adres IP, więc awaryjnie działa https://192.168.0.158 przez osobny wpis proxy (niżej).
 
 Pliki:
 - `release/trenazer-<wersja>.tar` – obraz Dockera
 - `docker-compose.portainer.yml` – stack dla Portainera
-- `certs/trenazer.crt` i `certs/trenazer.key` – certyfikat (10 lat) dla `IP:192.168.0.158` i `DNS:trenazer.local`, poza gitem; klucz prywatny trzymaj tylko u siebie i na NAS
+- `certs/trenazer-ca.crt` i `certs/trenazer-ca.key` – lokalne CA (10 lat); urządzenia ufają tylko temu certyfikatowi, a klucz CA trzymaj wyłącznie u siebie (nie na NAS)
+- `certs/trenazer.crt` i `certs/trenazer.key` – certyfikat serwera dla `DNS:trenazer.local` i `IP:192.168.0.158` podpisany przez CA (825 dni), dla DSM
+- wszystko w `certs/` jest poza gitem
 
 ## 1. Katalog na dane
-File Station: utwórz `/volume1/docker/trenazer/data` i wgraj tam **`certs/trenazer.crt`** (tylko certyfikat, bez pliku `.key`). Aplikacja udostępnia go do pobrania w zakładce Profil, więc na Chromebooka i inne urządzenia nie trzeba go kopiować ręcznie. Aby przenieść dotychczasowe dane z PC, skopiuj tam też zawartość `D:\github\LocalTrainer\data` (`profile.json`, `workouts`, `history`).
+File Station: utwórz `/volume1/docker/trenazer/data` i wgraj tam **`certs/trenazer-ca.crt`** (tylko certyfikat CA, bez żadnego pliku `.key`). Aplikacja udostępnia go do pobrania w zakładce Profil, więc na Chromebooka i inne urządzenia nie trzeba go kopiować ręcznie. Aby przenieść dotychczasowe dane z PC, skopiuj tam też zawartość `D:\github\LocalTrainer\data` (`profile.json`, `workouts`, `history`).
 
 ## 2. Obraz i kontener (Portainer, http://192.168.0.158:9000)
 1. Images → Import → wybierz `release/trenazer-<wersja>.tar`.
@@ -33,12 +35,29 @@ Potem Zabezpieczenia → Certyfikat → Ustawienia → przy usłudze `trenazer.l
 
 Awaryjnie, gdyby mDNS nie działał: drugi wpis ze źródłem HTTPS, nazwa hosta `*`, port `3443`, ten sam cel i certyfikat; adres https://192.168.0.158:3443.
 
-NAS musi mieć stały adres 192.168.0.158 (rezerwacja DHCP w routerze albo statyczny IP w DSM); po zmianie adresu trzeba wygenerować nowy certyfikat.
+NAS musi mieć stały adres 192.168.0.158 (rezerwacja DHCP w routerze albo statyczny IP w DSM); po zmianie adresu albo po wygaśnięciu certyfikatu serwera trzeba wystawić nowy z tego samego CA (niżej) i podmienić go w DSM. Urządzenia nie wymagają wtedy żadnych zmian.
+
+Nowy certyfikat serwera (Git Bash w `certs/`):
+
+```bash
+export MSYS_NO_PATHCONV=1
+openssl req -new -newkey rsa:2048 -nodes -keyout trenazer.key -out trenazer.csr -subj "/CN=trenazer.local"
+printf "basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:trenazer.local,IP:192.168.0.158
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid
+" > leaf.ext
+openssl x509 -req -in trenazer.csr -CA trenazer-ca.crt -CAkey trenazer-ca.key -CAcreateserial -days 825 -sha256 -extfile leaf.ext -out trenazer.crt
+```
 
 ## 5. Zaufanie do certyfikatu na urządzeniach
 Certyfikat pobiera się z samej aplikacji: zakładka **Profil → Certyfikat HTTPS → Pobierz certyfikat**, pod nim instrukcja dla Chromebooka, Windows i Androida (otwarta jest ta dla bieżącego urządzenia).
 
 Przy pierwszym wejściu, zanim certyfikat jest zaufany, otwórz aplikację bez HTTPS pod **http://trenazer.local:3000** (port aplikacji na NAS) albo przejdź przez ostrzeżenie przeglądarki na https://trenazer.local. Po dodaniu certyfikatu do zaufanych zamknij kartę i otwórz **https://trenazer.local**: panel pokaże „Połączenie HTTPS jest zaufane”.
+
+Jeśli urządzenie ufało wcześniej staremu certyfikatowi `trenazer.local` z własnym podpisem, usuń go z zaufanych i dodaj `trenazer-ca.crt`; Chrome odrzucał tamten certyfikat jako nieważny.
 
 Chromebook szkolny lub firmowy (zarządzany) może blokować import certyfikatów; wtedy decyduje administrator.
 

@@ -16,7 +16,7 @@ export interface AppOptions {
   /** katalog zbudowanego frontendu; pominięty w trybie deweloperskim (Vite serwuje go sam) */
   clientDir?: string;
   logger?: boolean;
-  /** publiczny certyfikat HTTPS do pobrania z aplikacji; domyślnie <dataDir>/trenazer.crt */
+  /** publiczny certyfikat HTTPS do pobrania z aplikacji; domyślnie <dataDir>/trenazer-ca.crt (lokalne CA, które podpisuje certyfikat serwera) */
   certFile?: string;
 }
 
@@ -28,7 +28,7 @@ export function buildApp({ dataDir, clientDir, logger = false, certFile }: AppOp
 
   app.get('/api/health', async () => ({ ok: true }));
 
-  const certPath = certFile ?? path.join(dataDir, 'trenazer.crt');
+  const certPath = certFile ?? path.join(dataDir, 'trenazer-ca.crt');
   app.get('/api/cert/info', async (): Promise<CertInfo> => {
     const c = await readPublicCert(certPath);
     return c ? { ...c.info, fileName: path.basename(certPath) } : { available: false };

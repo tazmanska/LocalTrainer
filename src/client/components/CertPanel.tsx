@@ -85,7 +85,7 @@ export function CertPanel() {
               Pobierz certyfikat
             </a>
             <span className="small muted">
-              {info.names?.join(', ')} · ważny do {info.validTo ? new Date(info.validTo).toLocaleDateString('pl-PL') : '–'}
+              {info.names?.length ? info.names.join(', ') : info.subject} · ważny do {info.validTo ? new Date(info.validTo).toLocaleDateString('pl-PL') : '–'}
             </span>
           </div>
           {order.map((p, i) => (
@@ -100,7 +100,7 @@ export function CertPanel() {
           ))}
         </>
       ) : (
-        info && <p className="small muted">Serwer nie ma skonfigurowanego certyfikatu (plik trenazer.crt w katalogu danych).</p>
+        info && <p className="small muted">Serwer nie ma skonfigurowanego certyfikatu (plik trenazer-ca.crt w katalogu danych).</p>
       )}
     </section>
   );

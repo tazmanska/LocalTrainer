@@ -10,7 +10,7 @@ export interface CertInfo {
 }
 
 /**
- * Publiczny certyfikat serwera do pobrania z aplikacji, żeby dodać go do zaufanych na Chromebooku czy PC.
+ * Publiczny certyfikat (lokalne CA) do pobrania z aplikacji, żeby dodać go do zaufanych na Chromebooku czy PC.
  * Zwraca wyłącznie blok CERTIFICATE; plik z kluczem prywatnym nigdy nie zostanie wysłany, nawet przy pomyłce w konfiguracji.
  */
 export async function readPublicCert(file: string): Promise<{ pem: string; info: CertInfo } | null> {
