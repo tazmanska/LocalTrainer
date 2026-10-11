@@ -227,3 +227,43 @@ export function crankCadence(prev: { revs: number; time: number }, cur: { revs: 
   const rpm = (dRevs * 60 * 1024) / dTime;
   return rpm > 250 ? null : rpm;
 }
+
+// ---------- TrainerFan (wentylator na ESP32, ESPHome) ----------
+// Aplikacja co sekundę wysyła bieżącą moc i tętno, a wentylator sam przelicza je na nawiew
+// (progi, tryb mix, podtrzymanie po wysiłku i zabezpieczenia są ustawiane w ESPHome).
+
+export const FAN_SERVICE = '7a1f0000-5c3e-4b8e-9f2d-3c6a1b0e7f10';
+/** Status (odczyt/powiadomienia): [poziom docelowy %, wypełnienie PWM %, stan] */
+export const FAN_STATUS = '7a1f0002-5c3e-4b8e-9f2d-3c6a1b0e7f10';
+/** Dane treningu (zapis): [flagi, moc uint16 LE, tętno uint8]; flagi: bit 0 = moc ważna, bit 1 = tętno ważne */
+export const FAN_METRICS = '7a1f0003-5c3e-4b8e-9f2d-3c6a1b0e7f10';
+
+export function encodeFanMetrics(power: number | null, hr: number | null): Uint8Array {
+  const p = power === null ? 0 : clamp(Math.round(power), 0, 0xffff);
+  const h = hr === null ? 0 : clamp(Math.round(hr), 0, 0xff);
+  const flags = (power === null ? 0 : 0x01) | (hr === null ? 0 : 0x02);
+  return Uint8Array.from([flags, p & 0xff, (p >> 8) & 0xff, h]);
+}
+
+export interface FanStatus {
+  /** poziom docelowy, % */
+  level: number;
+  /** aktualne wypełnienie PWM, % */
+  duty: number;
+  /** 0 stop, 1 auto, 2 failsafe, 3 ręczny, 4 aplikacja, 5 czeka na aplikację */
+  state: number;
+}
+
+export function parseFanStatus(data: DataView): FanStatus | null {
+  if (data.byteLength < 3) return null;
+  return { level: data.getUint8(0), duty: data.getUint8(1), state: data.getUint8(2) };
+}
+
+export const FAN_STATE_TEXT: Record<number, string> = {
+  0: 'stoi',
+  1: 'auto',
+  2: 'brak danych – minimum',
+  3: 'ręcznie',
+  4: 'poziom z aplikacji',
+  5: 'czeka na dane',
+};

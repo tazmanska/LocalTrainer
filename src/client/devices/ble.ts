@@ -13,7 +13,12 @@ import {
   encodeFecTargetPower,
   encodeFecTrackResistance,
   encodeSetSimulation,
+  encodeFanMetrics,
   encodeSetTargetPower,
+  FAN_METRICS,
+  FAN_SERVICE,
+  FAN_STATUS,
+  type FanStatus,
   FEC_PAGE_GENERAL,
   FTMS_CONTROL_POINT,
   FTMS_INDOOR_BIKE_DATA,
@@ -29,6 +34,7 @@ import {
   OP_START_OR_RESUME,
   parseAntFrame,
   parseControlPointResponse,
+  parseFanStatus,
   parseHeartRate,
   parseIndoorBikeData,
   parsePowerMeasurement,
@@ -501,6 +507,86 @@ export class BlePowerMeter extends BleDevice {
   };
 }
 
+/** Odczyt starszy niż ten czas traktujemy jak brak danych (wentylator przejdzie wtedy na obroty minimalne). */
+const FAN_STALE_MS = 5000;
+const FAN_SEND_MS = 1000;
+
+/**
+ * Wentylator TrainerFan (ESP32 z ESPHome). Pas tętna często przyjmuje tylko jedno połączenie BLE,
+ * więc wentylator nie łączy się z czujnikami sam: aplikacja co sekundę przekazuje mu moc i tętno,
+ * a poziom nawiewu (progi, tryb mix, podtrzymanie po wysiłku) liczy już wentylator.
+ * Wysyłamy także wtedy, gdy wartości się nie zmieniają: przerwa dłuższa niż 5 s to dla wentylatora utrata danych.
+ */
+export class BleFan extends BleDevice {
+  status: FanStatus | null = null;
+  private metrics: BluetoothRemoteGATTCharacteristic | null = null;
+  private statusCh: BluetoothRemoteGATTCharacteristic | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private sending = false;
+
+  constructor(
+    changed: () => void,
+    private readonly latest: () => { power: number | null; hr: number | null },
+  ) {
+    super('trenazer:fan', 'wentylatorem', changed);
+  }
+
+  protected requestOptions(): RequestDeviceOptions {
+    return { filters: [{ services: [FAN_SERVICE] }], optionalServices: [FAN_SERVICE] };
+  }
+
+  protected async setup(device: BluetoothDevice) {
+    const service = await getService(device, FAN_SERVICE);
+    this.metrics = await service!.getCharacteristic(FAN_METRICS);
+    try {
+      this.statusCh = await service!.getCharacteristic(FAN_STATUS);
+      this.statusCh.addEventListener('characteristicvaluechanged', this.onStatus);
+      await this.statusCh.startNotifications();
+    } catch {
+      // status jest tylko do podglądu
+    }
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => void this.send(), FAN_SEND_MS);
+    await this.send();
+  }
+
+  protected teardown() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.statusCh?.removeEventListener('characteristicvaluechanged', this.onStatus);
+    this.statusCh = null;
+    this.metrics = null;
+    this.sending = false;
+    this.status = null;
+  }
+
+  /** Wysyła bieżącą moc i tętno (publiczne na potrzeby testów). */
+  async send() {
+    const ch = this.metrics;
+    if (!ch || this.sending) return;
+    const { power, hr } = this.latest();
+    this.sending = true;
+    try {
+      const bytes = new Uint8Array(encodeFanMetrics(power, hr));
+      // bez odpowiedzi: to strumień co sekundę, zgubiona ramka nic nie psuje
+      try {
+        await ch.writeValueWithoutResponse(bytes);
+      } catch {
+        await ch.writeValue(bytes);
+      }
+    } catch {
+      // pojedynczy nieudany zapis pomijamy; zerwane połączenie obsłuży automatyczne ponowne łączenie
+    } finally {
+      this.sending = false;
+    }
+  }
+
+  private onStatus = (e: Event) => {
+    this.status = parseFanStatus((e.target as BluetoothRemoteGATTCharacteristic).value!);
+    this.changed();
+  };
+}
+
 export type PowerSource = 'pedals' | 'trainer';
 const POWER_SOURCE_KEY = 'trenazer:power-source';
 
@@ -510,6 +596,8 @@ export class BleSource implements DataSource {
   readonly trainer: BleTrainer;
   readonly heartRate: BleHeartRate;
   readonly pedals: BlePowerMeter;
+  readonly fan: BleFan;
+  private last = { power: null as number | null, powerAt: 0, hr: null as number | null, hrAt: 0 };
   private readings = new Set<(r: Reading) => void>();
   private changes = new Set<() => void>();
   private source: PowerSource;
@@ -541,6 +629,16 @@ export class BleSource implements DataSource {
       }
       this.emit(out);
     });
+    this.fan = new BleFan(changed, () => this.latestForFan());
+  }
+
+  /** Najświeższa moc i tętno dla wentylatora; dane starsze niż 5 s są pomijane. */
+  private latestForFan() {
+    const now = Date.now();
+    return {
+      power: now - this.last.powerAt <= FAN_STALE_MS ? this.last.power : null,
+      hr: now - this.last.hrAt <= FAN_STALE_MS ? this.last.hr : null,
+    };
   }
 
   get powerSource(): PowerSource {
@@ -570,26 +668,40 @@ export class BleSource implements DataSource {
       message: d.message,
     });
     const list = [info(this.trainer, 'trainer', 'Trenażer'), info(this.heartRate, 'hr', 'Pas tętna')];
-    // pedały pokazujemy na ekranie treningu tylko wtedy, gdy są używane
-    return this.pedals.state === 'idle' ? list : [...list, info(this.pedals, 'pedals', 'Pedały')];
+    // pedały i wentylator pokazujemy na ekranie treningu tylko wtedy, gdy są używane
+    if (this.pedals.state !== 'idle') list.push(info(this.pedals, 'pedals', 'Pedały'));
+    if (this.fan.state !== 'idle') list.push(info(this.fan, 'fan', 'Wentylator'));
+    return list;
   }
 
   /** Pełna lista urządzeń do panelu łączenia, łącznie z niepodłączonymi pedałami. */
   allDevices(): DeviceInfo[] {
     const [t, h] = this.devices() as [DeviceInfo, DeviceInfo];
     const p = this.pedals;
-    return [t, h, { label: p.label || 'Pedały mocy', kind: 'pedals', connected: p.state === 'connected', state: p.state, message: p.message }];
+    const f = this.fan;
+    return [
+      t,
+      h,
+      { label: p.label || 'Pedały mocy', kind: 'pedals', connected: p.state === 'connected', state: p.state, message: p.message },
+      { label: f.label || 'Wentylator', kind: 'fan', connected: f.state === 'connected', state: f.state, message: f.message },
+    ];
   }
 
   /** Ciche połączenie z zapamiętanymi urządzeniami. */
   async connect() {
-    await Promise.all([this.trainer.reconnectSaved(), this.heartRate.reconnectSaved(), this.pedals.reconnectSaved()]);
+    await Promise.all([
+      this.trainer.reconnectSaved(),
+      this.heartRate.reconnectSaved(),
+      this.pedals.reconnectSaved(),
+      this.fan.reconnectSaved(),
+    ]);
   }
 
   disconnect() {
     this.trainer.disconnect();
     this.heartRate.disconnect();
     this.pedals.disconnect();
+    this.fan.disconnect();
   }
 
   setTargetPower(watts: number | null) {
@@ -611,6 +723,9 @@ export class BleSource implements DataSource {
   }
 
   private emit(r: Reading) {
+    const now = Date.now();
+    if (r.power !== undefined) this.last = { ...this.last, power: r.power, powerAt: now };
+    if (r.hr !== undefined) this.last = { ...this.last, hr: r.hr, hrAt: now };
     this.readings.forEach((cb) => cb(r));
   }
 }

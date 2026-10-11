@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { bluetoothUnavailable, type BleSource } from '../devices/ble';
+import { FAN_STATE_TEXT } from '../devices/protocol';
 import type { DeviceInfo } from '../devices/source';
 
 export type DeviceMode = 'sim' | 'ble';
@@ -36,6 +37,13 @@ const STATE_TEXT: Record<DeviceInfo['state'], string> = {
   error: 'Błąd',
 };
 
+const CONNECT_TEXT: Record<DeviceInfo['kind'], string> = {
+  trainer: 'Połącz trenażer',
+  hr: 'Połącz pas',
+  pedals: 'Połącz pedały',
+  fan: 'Połącz wentylator',
+};
+
 interface Props {
   mode: DeviceMode;
   onMode: (m: DeviceMode) => void;
@@ -45,7 +53,8 @@ interface Props {
 export function DevicesPanel({ mode, onMode, ble }: Props) {
   useDeviceChanges(ble);
   const unavailable = bluetoothUnavailable();
-  const [trainer, hr, pedals] = ble.allDevices() as [DeviceInfo, DeviceInfo, DeviceInfo];
+  const [trainer, hr, pedals, fan] = ble.allDevices() as [DeviceInfo, DeviceInfo, DeviceInfo, DeviceInfo];
+  const fanStatus = ble.fan.status;
   const rows: { info: DeviceInfo; sub: string; pair: () => void; drop: () => void }[] = [
     {
       info: trainer,
@@ -59,6 +68,14 @@ export function DevicesPanel({ mode, onMode, ble }: Props) {
       sub: 'Pedały mocy · Cycling Power · moc L/P i balans',
       pair: () => void ble.pedals.pair(),
       drop: () => ble.pedals.disconnect(),
+    },
+    {
+      info: fan,
+      sub:
+        'Wentylator TrainerFan · wysyła moc i tętno co 1 s' +
+        (fan.connected && fanStatus ? ` · ${FAN_STATE_TEXT[fanStatus.state] ?? fanStatus.state}, nawiew ${fanStatus.duty}%` : ''),
+      pair: () => void ble.fan.pair(),
+      drop: () => ble.fan.disconnect(),
     },
   ];
 
@@ -107,7 +124,7 @@ export function DevicesPanel({ mode, onMode, ble }: Props) {
                 </button>
               ) : (
                 <button className="btn primary" type="button" onClick={pair} disabled={info.state === 'connecting'}>
-                  {info.kind === 'trainer' ? 'Połącz trenażer' : info.kind === 'hr' ? 'Połącz pas' : 'Połącz pedały'}
+                  {CONNECT_TEXT[info.kind]}
                 </button>
               )}
             </div>

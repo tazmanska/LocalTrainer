@@ -16,7 +16,7 @@ export type DeviceState = 'idle' | 'connecting' | 'connected' | 'reconnecting' |
 export interface DeviceInfo {
   /** nazwa wyświetlana na chipie, np. „KICKR CORE” albo „Symulowany trenażer” */
   label: string;
-  kind: 'trainer' | 'hr' | 'pedals';
+  kind: 'trainer' | 'hr' | 'pedals' | 'fan';
   connected: boolean;
   state: DeviceState;
   /** komunikat błędu albo stanu do pokazania użytkownikowi */

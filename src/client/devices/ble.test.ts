@@ -3,7 +3,11 @@ import { BleSource } from './ble';
 import {
   buildAntFrame,
   decodeFecPage,
+  encodeFanMetrics,
   encodeFecTargetPower,
+  FAN_METRICS,
+  FAN_SERVICE,
+  FAN_STATUS,
   encodeSetSimulation,
   encodeSetTargetPower,
   FTMS_CONTROL_POINT,
@@ -13,6 +17,7 @@ import {
   HEART_RATE_SERVICE,
   parseAntFrame,
   parseControlPointResponse,
+  parseFanStatus,
   parseHeartRate,
   parseIndoorBikeData,
   parsePowerMeasurement,
@@ -72,6 +77,21 @@ describe('Cycling Power (pedały)', () => {
   });
 });
 
+describe('kodeki wentylatora TrainerFan', () => {
+  it('koduje moc i tętno z flagami ważności', () => {
+    expect([...encodeFanMetrics(250, 142)]).toEqual([0x03, 0xfa, 0x00, 142]);
+    expect([...encodeFanMetrics(1000.4, null)]).toEqual([0x01, 0xe8, 0x03, 0]);
+    expect([...encodeFanMetrics(null, 130)]).toEqual([0x02, 0, 0, 130]);
+    expect([...encodeFanMetrics(null, null)]).toEqual([0x00, 0, 0, 0]);
+    expect([...encodeFanMetrics(-5, 300)]).toEqual([0x03, 0, 0, 255]);
+  });
+
+  it('czyta status wentylatora', () => {
+    expect(parseFanStatus(dv(62, 60, 1))).toEqual({ level: 62, duty: 60, state: 1 });
+    expect(parseFanStatus(dv(1, 2))).toBeNull();
+  });
+});
+
 describe('kodeki tętna i Tacx FE-C', () => {
   it('czyta tętno 8- i 16-bitowe', () => {
     expect(parseHeartRate(dv(0x00, 142))).toBe(142);
@@ -113,16 +133,16 @@ class FakeChar extends EventTarget {
   }
 }
 
-function fakeDevice(services: Record<number, Record<number, FakeChar>>) {
+function fakeDevice(services: Record<string | number, Record<string | number, FakeChar>>) {
   const device = new EventTarget() as EventTarget & { id: string; name: string; gatt: unknown };
   const server = {
     connected: true,
     connect: async () => server,
     disconnect: () => {},
-    getPrimaryService: async (uuid: number) => {
+    getPrimaryService: async (uuid: string | number) => {
       const chars = services[uuid];
       if (!chars) throw Object.assign(new Error('No Services matching UUID'), { name: 'NotFoundError' });
-      return { getCharacteristic: async (c: number) => chars[c] ?? new FakeChar() };
+      return { getCharacteristic: async (c: string | number) => chars[c] ?? new FakeChar() };
     },
   };
   Object.assign(device, { id: 'dev1', name: 'KICKR CORE 1234', gatt: server });
@@ -202,6 +222,30 @@ describe('BleSource', () => {
     expect(readings.at(-1)).toMatchObject({ power: 250, cadence: 90 });
     pm.push(dv(0x03, 0x00, 0x18, 0x01, 102));
     expect(readings.at(-1)).toEqual({ pedalPower: 280, balance: 51 });
+  });
+
+  it('wentylator dostaje najświeższą moc i tętno, a status trafia do podglądu', async () => {
+    const bike = new FakeChar();
+    const hrChar = new FakeChar();
+    const metrics = new FakeChar();
+    const status = new FakeChar();
+    const src = new BleSource();
+    await src.trainer.connectDevice(fakeDevice({ [FTMS_SERVICE]: { [FTMS_CONTROL_POINT]: new FakeChar(), [FTMS_INDOOR_BIKE_DATA]: bike } }));
+    await src.heartRate.connectDevice(fakeDevice({ [HEART_RATE_SERVICE]: { [HEART_RATE_MEASUREMENT]: hrChar } }));
+    await src.fan.connectDevice(fakeDevice({ [FAN_SERVICE]: { [FAN_METRICS]: metrics, [FAN_STATUS]: status } }));
+    expect(metrics.writes.at(-1)).toEqual([0x00, 0, 0, 0]); // jeszcze brak danych
+    expect(src.allDevices()[3]).toMatchObject({ kind: 'fan', connected: true });
+    expect(src.devices().map((d) => d.kind)).toContain('fan');
+
+    bike.push(dv(0x44, 0x00, 0xc4, 0x09, 0xb4, 0x00, 0xfa, 0x00)); // 250 W
+    hrChar.push(dv(0x00, 142));
+    await src.fan.send();
+    expect(metrics.writes.at(-1)).toEqual([0x03, 0xfa, 0x00, 142]);
+
+    status.push(dv(62, 60, 1));
+    expect(src.fan.status).toEqual({ level: 62, duty: 60, state: 1 });
+    src.fan.disconnect();
+    expect(src.fan.status).toBeNull();
   });
 
   it('trenażer bez FTMS i FE-C daje czytelny błąd', async () => {
