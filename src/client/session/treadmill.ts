@@ -1,0 +1,102 @@
+import { intervalStarts, TREADMILL_MAX_KPH, TREADMILL_MIN_KPH, type TreadmillWorkout } from '../../shared/treadmill';
+
+export interface TreadmillSample {
+  t: number;
+  /** prędkość zmierzona przez bieżnię, km/h */
+  speed: number | null;
+  /** prędkość docelowa, km/h */
+  target: number;
+  hr: number | null;
+}
+
+/**
+ * Przebieg treningu na bieżni niezależny od UI i urządzenia: zegar, bieżący odcinek,
+ * prędkość docelowa z korektą (±0,5 km/h) ucinana do limitu, dystans i próbki co sekundę.
+ */
+export class TreadmillRunner {
+  readonly starts: number[];
+  readonly total: number;
+  elapsed = 0;
+  /** korekta prędkości dla całego treningu, km/h */
+  offset = 0;
+  running = false;
+  /** dystans liczony z prędkości zmierzonej (albo docelowej, gdy bieżnia jej nie podaje), m */
+  distance = 0;
+  readonly samples: TreadmillSample[] = [];
+  startedAt: Date | null = null;
+
+  constructor(
+    readonly workout: TreadmillWorkout,
+    /** najwyższa prędkość do ustawienia (limit aplikacji albo bieżni) */
+    readonly maxSpeed = TREADMILL_MAX_KPH,
+  ) {
+    this.starts = intervalStarts(workout.intervals);
+    this.total = workout.intervals.reduce((a, s) => a + s.duration, 0);
+  }
+
+  get finished() {
+    return this.elapsed >= this.total;
+  }
+
+  get index() {
+    const t = Math.min(this.elapsed, this.total - 1);
+    for (let i = this.starts.length - 1; i >= 0; i--) if (t >= this.starts[i]!) return i;
+    return 0;
+  }
+
+  get interval() {
+    return this.workout.intervals[this.index]!;
+  }
+
+  get intervalElapsed() {
+    return this.elapsed - this.starts[this.index]!;
+  }
+
+  get intervalRemaining() {
+    return Math.max(0, this.interval.duration - this.intervalElapsed);
+  }
+
+  /** Prędkość docelowa odcinka z korektą, km/h. */
+  speedOf(i = this.index) {
+    const s = this.workout.intervals[i]!.speed + this.offset;
+    return Math.round(Math.min(Math.min(TREADMILL_MAX_KPH, this.maxSpeed), Math.max(TREADMILL_MIN_KPH, s)) * 10) / 10;
+  }
+
+  targetSpeed() {
+    return this.speedOf();
+  }
+
+  targetIncline(): number | null {
+    return this.interval.incline ?? null;
+  }
+
+  start() {
+    if (this.finished) return;
+    this.running = true;
+    this.startedAt ??= new Date();
+  }
+
+  pause() {
+    this.running = false;
+  }
+
+  /** Jedna sekunda treningu. */
+  tick(r: { speed: number | null; hr: number | null }) {
+    if (!this.running || this.finished) return;
+    const target = this.targetSpeed();
+    this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr });
+    this.distance += (r.speed ?? target) / 3.6;
+    this.elapsed++;
+    if (this.finished) this.running = false;
+  }
+
+  skip() {
+    const i = this.index;
+    this.elapsed = i + 1 < this.starts.length ? this.starts[i + 1]! : this.total;
+    if (this.finished) this.running = false;
+  }
+
+  adjust(delta: number) {
+    this.offset = Math.round(Math.min(3, Math.max(-3, this.offset + delta)) * 10) / 10;
+  }
+}

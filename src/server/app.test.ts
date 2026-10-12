@@ -170,3 +170,31 @@ describe('/api/cert', () => {
     expect(res.body).not.toContain('PRIVATE');
   });
 });
+
+describe('/api/treadmill', () => {
+  const body = { name: 'Interwały', intervals: [{ label: 'Bieg', duration: 120, speed: 10 }] };
+
+  it('tworzy, listuje, zmienia i usuwa trening na bieżnię', async () => {
+    const app = buildApp({ dataDir });
+    const post = await app.inject({ method: 'POST', url: '/api/treadmill', payload: body });
+    expect(post.statusCode).toBe(201);
+    const w = post.json();
+    expect(w).toMatchObject({ name: 'Interwały', intervals: [{ label: 'Bieg', duration: 120, speed: 10, incline: null }] });
+    expect(w.id).toMatch(/^[0-9a-f]{12}$/);
+
+    const put = await app.inject({ method: 'PUT', url: `/api/treadmill/${w.id}`, payload: { ...body, name: 'Nowa nazwa' } });
+    expect(put.json()).toMatchObject({ id: w.id, name: 'Nowa nazwa' });
+    const list = await buildApp({ dataDir }).inject({ method: 'GET', url: '/api/treadmill' });
+    expect(list.json()).toHaveLength(1);
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/treadmill/${w.id}` })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: '/api/treadmill' })).json()).toEqual([]);
+  });
+
+  it('odrzuca prędkość powyżej 12 km/h i nieznany trening', async () => {
+    const app = buildApp({ dataDir });
+    const bad = await app.inject({ method: 'POST', url: '/api/treadmill', payload: { name: 'x', intervals: [{ duration: 60, speed: 14 }] } });
+    expect(bad.statusCode).toBe(400);
+    expect((await app.inject({ method: 'PUT', url: '/api/treadmill/000000000000', payload: body })).statusCode).toBe(404);
+  });
+});

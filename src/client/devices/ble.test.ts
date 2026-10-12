@@ -24,6 +24,17 @@ import {
   crankCadence,
   CYCLING_POWER_MEASUREMENT,
   CYCLING_POWER_SERVICE,
+  encodeSetTargetIncline,
+  encodeSetTargetSpeed,
+  FTMS_STATUS,
+  FTMS_SUPPORTED_INCLINE_RANGE,
+  FTMS_SUPPORTED_SPEED_RANGE,
+  FTMS_TREADMILL_DATA,
+  parseInclineRange,
+  parseMachineStatus,
+  parseSpeedRange,
+  parseTreadmillData,
+  type TreadmillData,
 } from './protocol';
 import type { Reading } from './source';
 
@@ -54,6 +65,34 @@ describe('kodeki FTMS', () => {
   it('czyta odpowiedź punktu sterowania', () => {
     expect(parseControlPointResponse(dv(0x80, 0x05, 0x05))).toEqual({ opcode: 0x05, result: 0x05 });
     expect(parseControlPointResponse(dv(0x05, 0xfa, 0x00))).toBeNull();
+  });
+});
+
+describe('kodeki bieżni FTMS', () => {
+  it('czyta prędkość, dystans, nachylenie i tętno, pomijając pozostałe pola', () => {
+    // flagi 0x01ee: średnia prędkość, dystans, nachylenie + kąt, tempo chwilowe, tempo średnie, energia, tętno
+    const d = parseTreadmillData(
+      dv(0xee, 0x01, 0xe8, 0x03, 0x10, 0x27, 0x10, 0x27, 0x00, 0x14, 0x00, 0x00, 0x00, 60, 61, 1, 0, 2, 0, 3, 150),
+    );
+    expect(d).toEqual({ speedKph: 10, distanceM: 10000, inclinePct: 2, hr: 150 });
+  });
+
+  it('bez prędkości, gdy ustawiony jest bit More Data', () => {
+    expect(parseTreadmillData(dv(0x01, 0x00))).toEqual({ speedKph: null, distanceM: null, inclinePct: null, hr: null });
+  });
+
+  it('koduje prędkość i nachylenie docelowe oraz czyta zakresy', () => {
+    expect([...encodeSetTargetSpeed(12)]).toEqual([0x02, 0xb0, 0x04]);
+    expect([...encodeSetTargetIncline(-1.5)]).toEqual([0x03, 0xf1, 0xff]);
+    expect(parseSpeedRange(dv(0x64, 0x00, 0x40, 0x06, 0x0a, 0x00))).toEqual({ min: 1, max: 16 });
+    expect(parseInclineRange(dv(0x00, 0x00, 0x96, 0x00, 0x05, 0x00))).toEqual({ min: 0, max: 15 });
+  });
+
+  it('rozpoznaje zatrzymanie, pauzę i start z konsoli', () => {
+    expect(parseMachineStatus(dv(0x02, 0x01))).toBe('stopped');
+    expect(parseMachineStatus(dv(0x02, 0x02))).toBe('paused');
+    expect(parseMachineStatus(dv(0x04))).toBe('started');
+    expect(parseMachineStatus(dv(0x05, 0xe8, 0x03))).toBeNull();
   });
 });
 
@@ -124,6 +163,9 @@ class FakeChar extends EventTarget {
   async writeValue(b: Uint8Array) {
     this.writes.push([...b]);
   }
+  async readValue() {
+    return this.value!;
+  }
   async writeValueWithoutResponse(b: Uint8Array) {
     this.writes.push([...b]);
   }
@@ -133,7 +175,8 @@ class FakeChar extends EventTarget {
   }
 }
 
-function fakeDevice(services: Record<string | number, Record<string | number, FakeChar>>) {
+/** strict: brakująca charakterystyka rzuca błąd jak w przeglądarce (domyślnie dostaje się pustą atrapę) */
+function fakeDevice(services: Record<string | number, Record<string | number, FakeChar>>, strict = false) {
   const device = new EventTarget() as EventTarget & { id: string; name: string; gatt: unknown };
   const server = {
     connected: true,
@@ -142,7 +185,13 @@ function fakeDevice(services: Record<string | number, Record<string | number, Fa
     getPrimaryService: async (uuid: string | number) => {
       const chars = services[uuid];
       if (!chars) throw Object.assign(new Error('No Services matching UUID'), { name: 'NotFoundError' });
-      return { getCharacteristic: async (c: string | number) => chars[c] ?? new FakeChar() };
+      return {
+        getCharacteristic: async (c: string | number) => {
+          if (chars[c]) return chars[c];
+          if (strict) throw Object.assign(new Error('No Characteristics matching UUID'), { name: 'NotFoundError' });
+          return new FakeChar();
+        },
+      };
     },
   };
   Object.assign(device, { id: 'dev1', name: 'KICKR CORE 1234', gatt: server });
@@ -253,5 +302,101 @@ describe('BleSource', () => {
     await src.trainer.connectDevice(fakeDevice({}));
     expect(src.devices()[0]).toMatchObject({ state: 'error', connected: false });
     expect(src.devices()[0]!.message).toMatch(/FTMS/);
+  });
+});
+
+describe('BleTreadmill', () => {
+  function treadmill(speedMax = 0x0640) {
+    const cp = new FakeChar();
+    const data = new FakeChar();
+    const status = new FakeChar();
+    const speedRange = new FakeChar();
+    speedRange.value = dv(0x64, 0x00, speedMax & 0xff, speedMax >> 8, 0x0a, 0x00);
+    const inclineRange = new FakeChar();
+    inclineRange.value = dv(0x00, 0x00, 0x96, 0x00, 0x05, 0x00);
+    const device = fakeDevice({
+      [FTMS_SERVICE]: {
+        [FTMS_CONTROL_POINT]: cp,
+        [FTMS_TREADMILL_DATA]: data,
+        [FTMS_STATUS]: status,
+        [FTMS_SUPPORTED_SPEED_RANGE]: speedRange,
+        [FTMS_SUPPORTED_INCLINE_RANGE]: inclineRange,
+      },
+    });
+    return { cp, data, status, device };
+  }
+
+  it('po połączeniu tylko przejmuje kontrolę; taśma rusza dopiero po start()', async () => {
+    const { cp, device } = treadmill();
+    const src = new BleSource();
+    await src.treadmill.connectDevice(device);
+    expect(src.treadmill.state).toBe('connected');
+    expect(cp.writes).toEqual([[0x00]]);
+    expect(src.treadmill.speedRange).toEqual({ min: 1, max: 16 });
+    expect(src.treadmill.supportsIncline).toBe(true);
+
+    src.treadmill.setTarget(10, 2);
+    await src.treadmill.start();
+    await tick();
+    expect(cp.writes).toContainEqual([0x07]);
+    expect(cp.writes.at(-2)).toEqual([0x02, 0xe8, 0x03]);
+    expect(cp.writes.at(-1)).toEqual([0x03, 20, 0]);
+  });
+
+  it('nigdy nie ustawia więcej niż 12 km/h ani więcej, niż pozwala bieżnia', async () => {
+    const a = treadmill();
+    const src = new BleSource();
+    await src.treadmill.connectDevice(a.device);
+    src.treadmill.setTarget(15, null);
+    await tick();
+    expect(a.cp.writes.at(-1)).toEqual([0x02, 0xb0, 0x04]); // 12,00 km/h
+
+    const b = treadmill(0x03e8); // bieżnia do 10 km/h
+    const src2 = new BleSource();
+    await src2.treadmill.connectDevice(b.device);
+    expect(src2.treadmill.maxSpeed).toBe(10);
+    src2.treadmill.setTarget(11, null);
+    await tick();
+    expect(b.cp.writes.at(-1)).toEqual([0x02, 0xe8, 0x03]);
+  });
+
+  it('przekazuje odczyty, tętno z bieżni bez pasa i zdarzenia z konsoli', async () => {
+    const { data, status, device } = treadmill();
+    const src = new BleSource();
+    const got: TreadmillData[] = [];
+    const readings: Reading[] = [];
+    const events: string[] = [];
+    src.onTreadmill((d) => got.push(d));
+    src.onReading((r) => readings.push(r));
+    src.onMachine((e) => events.push(e));
+    await src.treadmill.connectDevice(device);
+    data.push(dv(0x04, 0x01, 0xe8, 0x03, 0x64, 0x00, 0x00, 140)); // prędkość, dystans, tętno
+    expect(got.at(-1)).toEqual({ speedKph: 10, distanceM: 100, inclinePct: null, hr: 140 });
+    expect(readings.at(-1)).toEqual({ hr: 140 });
+    status.push(dv(0x02, 0x02));
+    expect(events).toEqual(['paused']);
+  });
+
+  it('pauza zapomina cel, żeby ponowne połączenie nie ruszyło taśmy', async () => {
+    const { cp, device } = treadmill();
+    const src = new BleSource();
+    await src.treadmill.connectDevice(device);
+    src.treadmill.setTarget(8, null);
+    await tick();
+    await src.treadmill.pause();
+    expect(cp.writes.at(-1)).toEqual([0x08, 0x02]);
+    cp.writes = [];
+    await src.treadmill.connectDevice(device);
+    await tick();
+    expect(cp.writes).toEqual([[0x00]]);
+  });
+
+  it('trenażer bez Treadmill Data daje czytelny błąd', async () => {
+    const src = new BleSource();
+    await src.treadmill.connectDevice(
+      fakeDevice({ [FTMS_SERVICE]: { [FTMS_CONTROL_POINT]: new FakeChar(), [FTMS_INDOOR_BIKE_DATA]: new FakeChar() } }, true),
+    );
+    expect(src.treadmill.state).toBe('error');
+    expect(src.treadmill.message).toMatch(/nie jest bieżnią/);
   });
 });

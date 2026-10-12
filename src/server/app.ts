@@ -6,8 +6,10 @@ import { readPublicCert, type CertInfo } from './cert.js';
 import { validateProfile } from '../shared/profile.js';
 import { checkSessionInput, type SessionInput } from '../shared/session.js';
 import { toGpx, toTcx } from './export.js';
+import { validateTreadmillWorkout } from '../shared/treadmill.js';
 import { SessionStore } from './sessions.js';
 import { ProfileStore } from './storage.js';
+import { TreadmillStore } from './treadmill.js';
 import { WorkoutStore } from './workouts.js';
 import { ZwoError } from './zwo.js';
 
@@ -25,6 +27,7 @@ export function buildApp({ dataDir, clientDir, logger = false, certFile }: AppOp
   const profiles = new ProfileStore(dataDir);
   const workouts = new WorkoutStore(dataDir);
   const sessions = new SessionStore(dataDir);
+  const treadmill = new TreadmillStore(dataDir);
 
   app.get('/api/health', async () => ({ ok: true }));
 
@@ -73,6 +76,26 @@ export function buildApp({ dataDir, clientDir, logger = false, certFile }: AppOp
 
   app.delete<{ Params: { id: string } }>('/api/workouts/:id', async (req, reply) => {
     const ok = await workouts.remove(req.params.id);
+    return ok ? reply.code(204).send() : reply.code(404).send({ error: 'Nie ma takiego treningu' });
+  });
+
+  app.get('/api/treadmill', async () => treadmill.list());
+
+  app.post('/api/treadmill', async (req, reply) => {
+    const v = validateTreadmillWorkout(req.body);
+    if ('error' in v) return reply.code(400).send({ error: v.error });
+    return reply.code(201).send(await treadmill.save(v.workout));
+  });
+
+  app.put<{ Params: { id: string } }>('/api/treadmill/:id', async (req, reply) => {
+    const v = validateTreadmillWorkout(req.body);
+    if ('error' in v) return reply.code(400).send({ error: v.error });
+    const w = await treadmill.save(v.workout, req.params.id);
+    return w ?? reply.code(404).send({ error: 'Nie ma takiego treningu' });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/treadmill/:id', async (req, reply) => {
+    const ok = await treadmill.remove(req.params.id);
     return ok ? reply.code(204).send() : reply.code(404).send({ error: 'Nie ma takiego treningu' });
   });
 

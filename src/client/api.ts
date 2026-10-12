@@ -1,6 +1,7 @@
 import type { Profile, ValidationErrors } from '../shared/profile';
 import type { Workout } from '../shared/workout';
 import type { Session, SessionInput, SessionListItem } from '../shared/session';
+import type { TreadmillWorkout, TreadmillWorkoutInput } from '../shared/treadmill';
 
 export class ApiValidationError extends Error {
   constructor(public readonly errors: ValidationErrors) {
@@ -76,3 +77,26 @@ export async function deleteSession(id: string): Promise<void> {
 }
 
 export const exportUrl = (id: string, format: 'tcx' | 'gpx') => `/api/sessions/${encodeURIComponent(id)}/export.${format}`;
+
+export async function listTreadmillWorkouts(): Promise<TreadmillWorkout[]> {
+  const res = await fetch('/api/treadmill');
+  if (!res.ok) throw new Error(`Nie udało się wczytać treningów bieżni (${res.status})`);
+  return res.json();
+}
+
+/** Zapis nowego treningu (bez id) albo zmian w istniejącym. */
+export async function saveTreadmillWorkout(input: TreadmillWorkoutInput, id?: string): Promise<TreadmillWorkout> {
+  const res = await fetch(id ? `/api/treadmill/${encodeURIComponent(id)}` : '/api/treadmill', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Nie udało się zapisać treningu (${res.status})`);
+  return body;
+}
+
+export async function deleteTreadmillWorkout(id: string): Promise<void> {
+  const res = await fetch(`/api/treadmill/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) throw new Error(`Nie udało się usunąć treningu (${res.status})`);
+}

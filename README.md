@@ -21,9 +21,9 @@ Dane trafiają do katalogu podmontowanego jako `/data` (`profile.json`, `workout
 ## Struktura
 
 - `src/shared` – logika wspólna (profil, walidacja, strefy mocy i tętna)
-- `src/server` – Fastify: profil, treningi (import ZWO), historia sesji z eksportem TCX/GPX, serwowanie zbudowanego frontendu
+- `src/server` – Fastify: profil, treningi (import ZWO), historia sesji z eksportem TCX/GPX, treningi interwałowe na bieżnię (data/treadmill), serwowanie zbudowanego frontendu
 - `src/client` – React + Vite; `devices/` to wymienne źródło danych: symulacja albo Bluetooth (trenażer FTMS / Tacx FE-C z trybem ERG, pas tętna, pedały mocy z balansem L/P; na podstawie GPX Rider, MIT, zob. THIRD_PARTY_NOTICES.md), `session/runner.ts` to przebieg treningu
 
 ## Bluetooth
 
-Przełącznik „Symulacja / Bluetooth” jest w zakładce Treningi. Web Bluetooth działa w Chrome i Edge (komputer, Android), nie na iPhonie, i tylko na stronie otwartej przez HTTPS albo pod `localhost`.
+Przełącznik „Symulacja / Bluetooth” jest w zakładce Treningi. Zakładka Bieżnia zawsze używa Bluetooth: łączy się z bieżnią FTMS (prędkość ustawiana przez aplikację nigdy nie przekracza 12 km/h) i pasem tętna; bez pasa tętno bierze z bieżni, jeśli je podaje. Web Bluetooth działa w Chrome i Edge (komputer, Android), nie na iPhonie, i tylko na stronie otwartej przez HTTPS albo pod `localhost`.

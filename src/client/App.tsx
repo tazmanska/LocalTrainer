@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Profile } from '../shared/profile';
 import type { Workout } from '../shared/workout';
 import { getProfile } from './api';
@@ -8,12 +8,14 @@ import { HistoryScreen } from './screens/HistoryScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { LiveScreen } from './screens/LiveScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { TreadmillScreen } from './screens/TreadmillScreen';
 
-type View = 'live' | 'lib' | 'hist' | 'prof';
+type View = 'live' | 'lib' | 'run' | 'hist' | 'prof';
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'live', label: 'Trening' },
   { id: 'lib', label: 'Treningi' },
+  { id: 'run', label: 'Bieżnia' },
   { id: 'hist', label: 'Historia' },
   { id: 'prof', label: 'Profil' },
 ];
@@ -33,6 +35,10 @@ export function App() {
   const [historyId, setHistoryId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [mode, setModeState] = useState<DeviceMode>(loadMode);
+  /** zakładka Bieżnia zostaje zamontowana po pierwszym otwarciu, żeby bieg trwał przy przełączaniu zakładek */
+  const [runOpened, setRunOpened] = useState(false);
+  const [runActive, setRunActive] = useState(false);
+  const onRunActive = useCallback((a: boolean) => setRunActive(a), []);
   const ble = useRef<BleSource>();
   ble.current ??= new BleSource();
 
@@ -45,6 +51,10 @@ export function App() {
   useEffect(() => {
     if (mode === 'ble') void ble.current!.connect();
   }, [mode]);
+
+  useEffect(() => {
+    if (view === 'run') setRunOpened(true);
+  }, [view]);
 
   async function start(workout: Workout) {
     if (active && !confirm('Trwa inny trening. Porzucić go bez zapisu?')) return;
@@ -70,16 +80,17 @@ export function App() {
             <button key={v.id} type="button" aria-current={view === v.id ? 'page' : undefined} onClick={() => setView(v.id)}>
               {v.label}
               {v.id === 'live' && active && <span className="live-dot" title="Trening w toku" />}
+              {v.id === 'run' && runActive && <span className="live-dot" title="Trening na bieżni w toku" />}
             </button>
           ))}
         </nav>
-        {mode === 'sim' && (
+        {mode === 'sim' && view !== 'run' && (
           <span className="modeflag" title="Trenażer i pulsometr są symulowane; przełączysz to w zakładce Treningi">
             tryb symulacji
           </span>
         )}
       </header>
-      <main className={view === 'live' ? 'wrap full' : 'wrap'}>
+      <main className={view === 'live' || (view === 'run' && runActive) ? 'wrap full' : 'wrap'}>
         {error && <p className="err">{error}</p>}
         {/* Ekran treningu zostaje zamontowany przy przełączaniu zakładek, żeby trening trwał dalej. */}
         {active && (
@@ -114,6 +125,11 @@ export function App() {
           </div>
         )}
         {view === 'lib' && <LibraryScreen onStart={start} devices={<DevicesPanel mode={mode} onMode={setMode} ble={ble.current} />} />}
+        {runOpened && (
+          <div hidden={view !== 'run'}>
+            <TreadmillScreen ble={ble.current} onActive={onRunActive} />
+          </div>
+        )}
         {view === 'hist' && <HistoryScreen key={historyId} initialId={historyId} />}
         {view === 'prof' && <ProfileScreen />}
       </main>

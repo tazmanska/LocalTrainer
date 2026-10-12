@@ -35,6 +35,8 @@ export const FTMS_OPCODE_NAMES: Record<number, string> = {
   [OP_START_OR_RESUME]: 'Start/Resume',
   [OP_STOP_OR_PAUSE]: 'Stop/Pause',
   [OP_SET_SIMULATION]: 'Set Simulation',
+  0x02: 'Set Target Speed',
+  0x03: 'Set Target Inclination',
 };
 
 export interface BikeData {
@@ -99,6 +101,96 @@ export function encodeSetTargetPower(watts: number): Uint8Array {
 export function encodeSetSimulation(gradePercent: number): Uint8Array {
   const g = clamp(Math.round(gradePercent * 100), -4000, 4000);
   return Uint8Array.from([OP_SET_SIMULATION, 0x00, 0x00, g & 0xff, (g >> 8) & 0xff, 0x40, 0x51]);
+}
+
+// ---------- FTMS: bieżnia ----------
+
+export const FTMS_TREADMILL_DATA = 0x2acd;
+export const FTMS_SUPPORTED_SPEED_RANGE = 0x2ad4;
+export const FTMS_SUPPORTED_INCLINE_RANGE = 0x2ad5;
+
+export const OP_SET_TARGET_SPEED = 0x02;
+export const OP_SET_TARGET_INCLINE = 0x03;
+export const STOP = 0x01;
+export const PAUSE = 0x02;
+
+export interface TreadmillData {
+  speedKph: number | null;
+  /** dystans od włączenia bieżni, m */
+  distanceM: number | null;
+  inclinePct: number | null;
+  hr: number | null;
+}
+
+/** Treadmill Data (0x2ACD): pola występują w kolejności bitów flag. */
+export function parseTreadmillData(data: DataView): TreadmillData {
+  const out: TreadmillData = { speedKph: null, distanceM: null, inclinePct: null, hr: null };
+  if (data.byteLength < 2) return out;
+  const flags = data.getUint16(0, true);
+  let i = 2;
+  const has = (n: number) => i + n <= data.byteLength;
+  // Bit 0 „More Data”: gdy jest WYZEROWANY, występuje prędkość chwilowa (0,01 km/h).
+  if ((flags & 0x0001) === 0 && has(2)) {
+    out.speedKph = data.getUint16(i, true) / 100;
+    i += 2;
+  }
+  if (flags & 0x0002) i += 2; // średnia prędkość
+  if (flags & 0x0004 && has(3)) {
+    out.distanceM = data.getUint16(i, true) | (data.getUint8(i + 2) << 16);
+    i += 3;
+  }
+  if (flags & 0x0008 && has(4)) {
+    out.inclinePct = data.getInt16(i, true) / 10; // dalej kąt rampy (sint16), pomijany
+    i += 4;
+  }
+  if (flags & 0x0010) i += 4; // przewyższenie dodatnie i ujemne
+  if (flags & 0x0020) i += 1; // tempo chwilowe (uint8, 0,1 km/min)
+  if (flags & 0x0040) i += 1; // tempo średnie
+  if (flags & 0x0080) i += 5; // energia: suma, na godzinę, na minutę
+  if (flags & 0x0100 && has(1)) {
+    const bpm = data.getUint8(i);
+    if (bpm > 0) out.hr = bpm;
+  }
+  return out;
+}
+
+export interface Range {
+  min: number;
+  max: number;
+}
+
+/** Supported Speed Range (0x2AD4): min, max, krok; uint16 w 0,01 km/h. */
+export function parseSpeedRange(data: DataView): Range | null {
+  if (data.byteLength < 4) return null;
+  return { min: data.getUint16(0, true) / 100, max: data.getUint16(2, true) / 100 };
+}
+
+/** Supported Inclination Range (0x2AD5): min, max (sint16), krok (uint16); 0,1%. */
+export function parseInclineRange(data: DataView): Range | null {
+  if (data.byteLength < 4) return null;
+  return { min: data.getInt16(0, true) / 10, max: data.getInt16(2, true) / 10 };
+}
+
+export function encodeSetTargetSpeed(kph: number): Uint8Array {
+  const v = clamp(Math.round(kph * 100), 0, 0xffff);
+  return Uint8Array.from([OP_SET_TARGET_SPEED, v & 0xff, (v >> 8) & 0xff]);
+}
+
+export function encodeSetTargetIncline(pct: number): Uint8Array {
+  const v = clamp(Math.round(pct * 10), -1000, 1000);
+  return Uint8Array.from([OP_SET_TARGET_INCLINE, v & 0xff, (v >> 8) & 0xff]);
+}
+
+/** Zdarzenie z Fitness Machine Status (0x2ADA), które obchodzi ekran bieżni. */
+export type MachineEvent = 'stopped' | 'paused' | 'started' | null;
+
+/** 0x02 = zatrzymana lub wstrzymana przez użytkownika (parametr 1 stop, 2 pauza), 0x04 = uruchomiona przez użytkownika. */
+export function parseMachineStatus(data: DataView): MachineEvent {
+  if (data.byteLength < 1) return null;
+  const op = data.getUint8(0);
+  if (op === 0x02) return data.byteLength >= 2 && data.getUint8(1) === PAUSE ? 'paused' : 'stopped';
+  if (op === 0x04) return 'started';
+  return null;
 }
 
 // ---------- Heart Rate Service ----------
