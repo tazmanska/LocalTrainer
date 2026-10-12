@@ -4,9 +4,7 @@ import {
   intervalStarts,
   paceText,
   repeatBlock,
-  TREADMILL_MAX_INCLINE,
   TREADMILL_MAX_KPH,
-  TREADMILL_MIN_INCLINE,
   TREADMILL_MIN_KPH,
   treadmillStats,
   validateTreadmillWorkout,
@@ -251,7 +249,6 @@ function TreadmillDetail({ w, onStart, onEdit, onDelete }: { w: TreadmillWorkout
               <th className="r">Czas</th>
               <th className="r">Prędkość</th>
               <th className="r">Tempo</th>
-              <th className="r">Nachylenie</th>
             </tr>
           </thead>
           <tbody>
@@ -265,7 +262,6 @@ function TreadmillDetail({ w, onStart, onEdit, onDelete }: { w: TreadmillWorkout
                 <td className="r">{fmtTime(it.duration)}</td>
                 <td className="r">{kmh(it.speed)}</td>
                 <td className="r">{paceText(it.speed)} /km</td>
-                <td className="r">{it.incline == null ? '–' : `${pl(it.incline, 1)}%`}</td>
               </tr>
             ))}
           </tbody>
@@ -377,7 +373,6 @@ function TreadmillEditor({ initial, onCancel, onSaved }: { initial: TreadmillWor
               <th>Odcinek</th>
               <th>Czas</th>
               <th>Prędkość</th>
-              <th>Nachylenie</th>
               <th />
             </tr>
           </thead>
@@ -392,21 +387,6 @@ function TreadmillEditor({ initial, onCancel, onSaved }: { initial: TreadmillWor
                 </td>
                 <td>
                   <SpeedInput label={`Prędkość odcinka ${i + 1}`} value={it.speed} onChange={(speed) => update(i, { speed })} />
-                </td>
-                <td>
-                  <span className="tm-num">
-                    <input
-                      type="number"
-                      min={TREADMILL_MIN_INCLINE}
-                      max={TREADMILL_MAX_INCLINE}
-                      step={0.5}
-                      placeholder="–"
-                      value={it.incline ?? ''}
-                      aria-label={`Nachylenie odcinka ${i + 1}`}
-                      onChange={(e) => update(i, { incline: e.target.value === '' ? null : Number(e.target.value) })}
-                    />
-                    <span>%</span>
-                  </span>
                 </td>
                 <td className="r tm-rowbtns">
                   <button type="button" className="btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Przesuń w górę">
