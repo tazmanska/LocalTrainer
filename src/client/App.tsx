@@ -127,7 +127,14 @@ export function App() {
         {view === 'lib' && <LibraryScreen onStart={start} devices={<DevicesPanel mode={mode} onMode={setMode} ble={ble.current} />} />}
         {runOpened && (
           <div hidden={view !== 'run'}>
-            <TreadmillScreen ble={ble.current} onActive={onRunActive} />
+            <TreadmillScreen
+              ble={ble.current}
+              onActive={onRunActive}
+              onSaved={(id) => {
+                setHistoryId(id);
+                setView('hist');
+              }}
+            />
           </div>
         )}
         {view === 'hist' && <HistoryScreen key={historyId} initialId={historyId} />}

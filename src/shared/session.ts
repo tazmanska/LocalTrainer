@@ -1,4 +1,5 @@
 // Zapisana sesja treningowa i jej podsumowanie. Kod współdzielony przez serwer i przeglądarkę.
+import type { TreadmillInterval } from './treadmill.js';
 import type { Segment } from './workout.js';
 
 /** Jedna sekunda treningu. */
@@ -12,7 +13,16 @@ export interface Sample {
   target: number | null;
   /** udział lewej nogi w %, gdy są obustronne pedały mocy */
   balance?: number | null;
+  /** bieg: prędkość zmierzona przez bieżnię, km/h */
+  speed?: number | null;
+  /** bieg: dystans od początku sesji, m */
+  distance?: number;
+  /** bieg: prędkość docelowa, km/h */
+  targetSpeed?: number | null;
 }
+
+/** Rodzaj sesji; brak pola = jazda na rowerze (sesje sprzed dodania bieżni). */
+export type Sport = 'bike' | 'run';
 
 export interface SessionSummary {
   duration: number;
@@ -28,6 +38,10 @@ export interface SessionSummary {
   avgCadence: number | null;
   /** średni udział lewej nogi ważony mocą, %; null bez pedałów z balansem */
   avgBalance?: number | null;
+  /** bieg: dystans, m */
+  distance?: number;
+  /** bieg: średnia prędkość, km/h */
+  avgSpeed?: number;
 }
 
 export interface SessionInput {
@@ -42,6 +56,9 @@ export interface SessionInput {
   source: 'sim' | 'ble';
   segments: Segment[];
   samples: Sample[];
+  sport?: Sport;
+  /** bieg: odcinki treningu na bieżni */
+  intervals?: TreadmillInterval[];
 }
 
 export interface Session extends SessionInput {
@@ -49,7 +66,7 @@ export interface Session extends SessionInput {
   summary: SessionSummary;
 }
 
-export type SessionListItem = Pick<Session, 'id' | 'workoutName' | 'startedAt' | 'source' | 'summary'>;
+export type SessionListItem = Pick<Session, 'id' | 'workoutName' | 'startedAt' | 'source' | 'summary' | 'sport'>;
 
 const avgOf = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
@@ -101,6 +118,17 @@ export function summarize(samples: readonly Sample[], ftp: number): SessionSumma
   };
 }
 
+/** Podsumowanie biegu: dystans i średnia prędkość z próbek, tętno i kadencja (kroki/min) jak na rowerze. */
+export function summarizeRun(samples: readonly Sample[], ftp: number): SessionSummary {
+  const base = summarize(samples, ftp);
+  const raw = samples.at(-1)?.distance ?? 0;
+  const n = samples.length;
+  return { ...base, distance: Math.round(raw), avgSpeed: n ? Math.round((raw / n) * 3.6 * 10) / 10 : 0 };
+}
+
+export const summarizeSession = (s: Pick<SessionInput, 'samples' | 'ftp' | 'sport'>) =>
+  s.sport === 'run' ? summarizeRun(s.samples, s.ftp) : summarize(s.samples, s.ftp);
+
 /** Sekundy spędzone w każdej strefie wg funkcji przypisującej indeks strefy. */
 export function timeInZones(samples: readonly Sample[], count: number, zoneOf: (s: Sample) => number | null): number[] {
   const out = new Array<number>(count).fill(0);
@@ -123,11 +151,13 @@ export function checkSessionInput(b: unknown): string | null {
   if (!isNum(o.ftp, 1, 2000) || !isNum(o.maxHr, 1, 300) || !isNum(o.weight, 1, 400)) return 'Niepoprawny profil';
   if (o.source !== 'sim' && o.source !== 'ble') return 'Niepoprawne źródło danych';
   if (!Array.isArray(o.segments)) return 'Brak etapów treningu';
+  if (o.sport !== undefined && o.sport !== 'bike' && o.sport !== 'run') return 'Niepoprawny rodzaj sesji';
+  if (o.intervals !== undefined && !Array.isArray(o.intervals)) return 'Niepoprawne odcinki biegu';
   if (!Array.isArray(o.samples) || o.samples.length === 0) return 'Sesja nie zawiera danych';
   if (o.samples.length > 24 * 3600) return 'Sesja jest zbyt długa';
   for (const s of o.samples as unknown[]) {
     const x = s as Record<string, unknown>;
-    if (!x || !isNum(x.t, 0, 24 * 3600) || !numOrNull(x.power, 5000) || !numOrNull(x.cadence, 300) || !numOrNull(x.hr, 300) || !numOrNull(x.target, 5000) || (x.balance !== undefined && !numOrNull(x.balance, 100))) {
+    if (!x || !isNum(x.t, 0, 24 * 3600) || !numOrNull(x.power, 5000) || !numOrNull(x.cadence, 300) || !numOrNull(x.hr, 300) || !numOrNull(x.target, 5000) || (x.balance !== undefined && !numOrNull(x.balance, 100)) || (x.speed !== undefined && !numOrNull(x.speed, 40)) || (x.targetSpeed !== undefined && !numOrNull(x.targetSpeed, 40)) || (x.distance !== undefined && !isNum(x.distance, 0, 1e6))) {
       return 'Niepoprawna próbka danych';
     }
   }

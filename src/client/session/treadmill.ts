@@ -7,6 +7,8 @@ export interface TreadmillSample {
   /** prędkość docelowa, km/h */
   target: number;
   hr: number | null;
+  /** dystans od początku treningu, m */
+  distance: number;
 }
 
 /**
@@ -86,12 +88,12 @@ export class TreadmillRunner {
   tick(r: { speed: number | null; hr: number | null; distanceM?: number | null }) {
     if (!this.running || this.finished) return;
     const target = this.targetSpeed();
-    this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr });
     // Dystans z licznika bieżni (przyrost od poprzedniej sekundy), a bez niego z prędkości.
     const d = r.distanceM ?? null;
     const step = d !== null && this.lastDistanceM !== null ? d - this.lastDistanceM : null;
     this.distance += step !== null && step >= 0 && step < 10 ? step : (r.speed ?? target) / 3.6;
     this.lastDistanceM = d;
+    this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr, distance: Math.round(this.distance * 10) / 10 });
     this.elapsed++;
     if (this.finished) this.running = false;
   }
@@ -100,6 +102,11 @@ export class TreadmillRunner {
     const i = this.index;
     this.elapsed = i + 1 < this.starts.length ? this.starts[i + 1]! : this.total;
     if (this.finished) this.running = false;
+  }
+
+  /** Dane do zapisu w historii (format sesji wspólny z rowerem: bez mocy, z prędkością i dystansem). */
+  toSessionSamples() {
+    return this.samples.map((s) => ({ t: s.t, power: null, cadence: null, hr: s.hr, target: null, speed: s.speed, targetSpeed: s.target, distance: s.distance }));
   }
 
   adjust(delta: number) {

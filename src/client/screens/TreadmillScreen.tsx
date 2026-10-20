@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HR_ZONES, zoneIndex } from '../../shared/profile';
+import { DEFAULT_PROFILE, HR_ZONES, zoneIndex, type Profile } from '../../shared/profile';
 import {
   intervalStarts,
   paceText,
@@ -11,7 +11,7 @@ import {
   type TreadmillInterval,
   type TreadmillWorkout,
 } from '../../shared/treadmill';
-import { deleteTreadmillWorkout, getProfile, listTreadmillWorkouts, saveTreadmillWorkout } from '../api';
+import { deleteTreadmillWorkout, getProfile, listTreadmillWorkouts, saveSession, saveTreadmillWorkout } from '../api';
 import { useDeviceChanges } from '../components/DevicesPanel';
 import { DurationInput, Stepper } from '../components/DurationInput';
 import { useFullscreen } from '../components/fullscreen';
@@ -28,6 +28,8 @@ interface Props {
   ble: BleSource;
   /** zmiana stanu „trening na bieżni w toku” (kropka na zakładce) */
   onActive: (active: boolean) => void;
+  /** bieg zapisany w historii */
+  onSaved: (sessionId: string) => void;
 }
 
 /** Kolor prędkości: marsz, trucht, bieg spokojny, tempo, szybko. */
@@ -37,12 +39,12 @@ export function speedColor(kph: number): string {
 
 const kmh = (n: number) => `${pl(n, 1)} km/h`;
 
-export function TreadmillScreen({ ble, onActive }: Props) {
+export function TreadmillScreen({ ble, onActive, onSaved }: Props) {
   const [workouts, setWorkouts] = useState<TreadmillWorkout[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<TreadmillWorkout | 'new' | null>(null);
   const [active, setActive] = useState<{ workout: TreadmillWorkout; key: number } | null>(null);
-  const [maxHr, setMaxHr] = useState(190);
+  const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function TreadmillScreen({ ble, onActive }: Props) {
       })
       .catch((e: Error) => setError(e.message));
     getProfile()
-      .then((p) => setMaxHr(p.maxHr))
+      .then(setProfile)
       .catch(() => {});
     // Wejście na zakładkę łączy się z zapamiętaną bieżnią i pasem tętna bez okna wyboru.
     void ble.treadmill.reconnectSaved();
@@ -63,7 +65,19 @@ export function TreadmillScreen({ ble, onActive }: Props) {
   useEffect(() => onActive(active !== null), [active, onActive]);
 
   if (active) {
-    return <TreadmillRun key={active.key} workout={active.workout} ble={ble} maxHr={maxHr} onClose={() => setActive(null)} />;
+    return (
+      <TreadmillRun
+        key={active.key}
+        workout={active.workout}
+        ble={ble}
+        profile={profile}
+        onClose={() => setActive(null)}
+        onSaved={(id) => {
+          setActive(null);
+          onSaved(id);
+        }}
+      />
+    );
   }
 
   if (editing) {
@@ -408,7 +422,7 @@ const VW = 1000;
 const VH = 200;
 
 /** Odcinki jako słupki o wysokości prędkości; w trakcie treningu z prędkością zmierzoną i znacznikiem „teraz”. */
-function TreadmillChart({ intervals, mini, progress, speeds }: { intervals: readonly TreadmillInterval[]; mini?: boolean; progress?: number; speeds?: (number | null)[] }) {
+export function TreadmillChart({ intervals, mini, progress, speeds }: { intervals: readonly TreadmillInterval[]; mini?: boolean; progress?: number; speeds?: (number | null)[] }) {
   const total = intervals.reduce((a, s) => a + s.duration, 0) || 1;
   const starts = intervalStarts(intervals);
   const x = (t: number) => (t / total) * VW;
@@ -453,7 +467,18 @@ function nextSpeed(r: TreadmillRunner): number | null {
   return r.index + 1 < r.workout.intervals.length ? r.speedOf(r.index + 1) : null;
 }
 
-function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWorkout; ble: BleSource; maxHr: number; onClose: () => void }) {
+interface RunProps {
+  workout: TreadmillWorkout;
+  ble: BleSource;
+  profile: Profile;
+  onClose: () => void;
+  onSaved: (sessionId: string) => void;
+}
+
+function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
+  const maxHr = profile.maxHr;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   useDeviceChanges(ble);
   const tm = ble.treadmill;
   const runner = useRef<TreadmillRunner>();
@@ -557,6 +582,32 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
     sendTarget();
     redraw();
   };
+  async function save() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const s = await saveSession({
+        workoutId: workout.id,
+        workoutName: workout.name,
+        startedAt: (r.startedAt ?? new Date()).toISOString(),
+        ftp: profile.ftp,
+        maxHr: profile.maxHr,
+        weight: profile.weight,
+        source: 'ble',
+        sport: 'run',
+        segments: [],
+        intervals: workout.intervals,
+        samples: r.toSessionSamples(),
+      });
+      exitFull();
+      void tm.stop();
+      onSaved(s.id);
+    } catch (e) {
+      setSaveError((e as Error).message);
+      setSaving(false);
+    }
+  }
+
   const finish = () => {
     exitFull();
     r.pause();
@@ -781,20 +832,29 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
               <Stat k="Śr. tętno" v={avgHr ? `${avgHr} bpm` : '–'} />
               <Stat k="Maks. tętno" v={hrs.length ? `${Math.max(...hrs)} bpm` : '–'} />
             </div>
+            <p className="muted">
+              {r.samples.length ? 'Bieg trafi do historii, skąd pobierzesz plik TCX dla Stravy lub Garmina.' : 'Bieg nie został rozpoczęty, nie ma czego zapisać.'}
+            </p>
+            {saveError && <p className="err">{saveError}</p>}
             <div className="actions">
-              <button className="btn primary" type="button" onClick={finish} autoFocus>
-                {r.finished ? 'Zamknij' : 'Zakończ i zatrzymaj bieżnię'}
-              </button>
-              {isFull && (
-                <button className="btn" type="button" onClick={exitFull}>
-                  Zamknij pełny ekran
+              {r.samples.length > 0 && (
+                <button className="btn primary" type="button" onClick={save} disabled={saving} autoFocus>
+                  {saving ? 'Zapisywanie…' : 'Zapisz sesję'}
                 </button>
               )}
               {!r.finished && (
-                <button className="btn" type="button" onClick={() => setEnding(false)}>
+                <button className="btn" type="button" onClick={() => setEnding(false)} disabled={saving}>
                   Wróć do treningu
                 </button>
               )}
+              {isFull && (
+                <button className="btn" type="button" onClick={exitFull} disabled={saving}>
+                  Zamknij pełny ekran
+                </button>
+              )}
+              <button className="btn danger" type="button" onClick={finish} disabled={saving}>
+                {r.samples.length ? 'Odrzuć bez zapisu' : 'Zamknij'}
+              </button>
             </div>
           </div>
         </div>

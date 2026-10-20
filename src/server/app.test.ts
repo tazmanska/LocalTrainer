@@ -198,3 +198,42 @@ describe('/api/treadmill', () => {
     expect((await app.inject({ method: 'PUT', url: '/api/treadmill/000000000000', payload: body })).statusCode).toBe(404);
   });
 });
+
+describe('/api/sessions: bieg na bieżni', () => {
+  const samples = Array.from({ length: 60 }, (_, t) => ({ t, power: null, cadence: null, hr: 150, target: null, speed: 10, targetSpeed: 10, distance: Math.round(((t + 1) * 10) / 3.6) }));
+  const input = {
+    workoutId: 'abc',
+    workoutName: 'Interwały',
+    startedAt: '2026-10-20T06:00:00.000Z',
+    ftp: 250,
+    maxHr: 188,
+    weight: 72,
+    source: 'ble',
+    sport: 'run',
+    segments: [],
+    intervals: [{ label: 'Bieg', duration: 60, speed: 10, incline: null }],
+    samples,
+  };
+
+  it('zapisuje bieg z dystansem, pokazuje go na liście i eksportuje TCX jako bieg', async () => {
+    const app = buildApp({ dataDir });
+    const post = await app.inject({ method: 'POST', url: '/api/sessions', payload: input });
+    expect(post.statusCode).toBe(201);
+    const s = post.json();
+    expect(s.summary).toMatchObject({ duration: 60, distance: 167, avgSpeed: 10, avgHr: 150 });
+    expect((await app.inject({ method: 'GET', url: '/api/sessions' })).json()[0]).toMatchObject({ sport: 'run' });
+
+    const tcx = (await app.inject({ method: 'GET', url: `/api/sessions/${s.id}/export.tcx` })).body;
+    expect(tcx).toContain('<Activity Sport="Running">');
+    expect(tcx).toContain('<DistanceMeters>167</DistanceMeters>');
+    expect(tcx).toContain('<DistanceMeters>3.0</DistanceMeters><HeartRateBpm><Value>150</Value></HeartRateBpm><Extensions><ns3:TPX><ns3:Speed>2.78</ns3:Speed>');
+    expect(tcx).not.toContain('Watts');
+  });
+
+  it('starsze sesje bez pola sport są rowerowe', async () => {
+    const app = buildApp({ dataDir });
+    const bike = { ...input, sport: undefined, intervals: undefined, samples: samples.map(({ t, hr }) => ({ t, power: 200, cadence: 90, hr, target: 200 })) };
+    await app.inject({ method: 'POST', url: '/api/sessions', payload: bike });
+    expect((await app.inject({ method: 'GET', url: '/api/sessions' })).json()[0]).toMatchObject({ sport: 'bike' });
+  });
+});

@@ -7,12 +7,22 @@ const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
 export function toTcx(s: Session): string {
   const start = Date.parse(s.startedAt);
   const sum = s.summary;
+  const run = s.sport === 'run';
   const points = s.samples
     .map((p) => {
       const parts = [`<Time>${iso(start + p.t * 1000)}</Time>`];
+      if (run && p.distance !== undefined) parts.push(`<DistanceMeters>${p.distance.toFixed(1)}</DistanceMeters>`);
       if (p.hr) parts.push(`<HeartRateBpm><Value>${Math.round(p.hr)}</Value></HeartRateBpm>`);
-      if (p.cadence !== null) parts.push(`<Cadence>${Math.min(254, Math.round(p.cadence))}</Cadence>`);
-      if (p.power !== null) parts.push(`<Extensions><ns3:TPX><ns3:Watts>${Math.round(p.power)}</ns3:Watts></ns3:TPX></Extensions>`);
+      if (run) {
+        // TCX zapisuje kadencję biegu w krokach jednej nogi na minutę (Strava i Garmin mnożą ją przez 2)
+        const tpx: string[] = [];
+        if (p.speed != null) tpx.push(`<ns3:Speed>${(p.speed / 3.6).toFixed(2)}</ns3:Speed>`);
+        if (p.cadence) tpx.push(`<ns3:RunCadence>${Math.min(254, Math.round(p.cadence / 2))}</ns3:RunCadence>`);
+        if (tpx.length) parts.push(`<Extensions><ns3:TPX>${tpx.join('')}</ns3:TPX></Extensions>`);
+      } else {
+        if (p.cadence !== null) parts.push(`<Cadence>${Math.min(254, Math.round(p.cadence))}</Cadence>`);
+        if (p.power !== null) parts.push(`<Extensions><ns3:TPX><ns3:Watts>${Math.round(p.power)}</ns3:Watts></ns3:TPX></Extensions>`);
+      }
       return `          <Trackpoint>${parts.join('')}</Trackpoint>`;
     })
     .join('\n');
@@ -24,16 +34,16 @@ export function toTcx(s: Session): string {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">',
     '  <Activities>',
-    '    <Activity Sport="Biking">',
+    `    <Activity Sport="${run ? 'Running' : 'Biking'}">`,
     `      <Id>${iso(start)}</Id>`,
     `      <Lap StartTime="${iso(start)}">`,
     `        <TotalTimeSeconds>${sum.duration}</TotalTimeSeconds>`,
-    '        <DistanceMeters>0</DistanceMeters>',
-    // przy sprawności ok. 24% kJ pracy na pedałach ≈ kcal spalonych
-    `        <Calories>${sum.work}</Calories>`,
+    `        <DistanceMeters>${run ? (sum.distance ?? 0) : 0}</DistanceMeters>`,
+    // rower: przy sprawności ok. 24% kJ pracy na pedałach ≈ kcal; bieg: ok. 1 kcal na kg masy i km
+    `        <Calories>${run ? Math.round(((sum.distance ?? 0) / 1000) * s.weight) : sum.work}</Calories>`,
     ...hr,
     '        <Intensity>Active</Intensity>',
-    ...(sum.avgCadence ? [`        <Cadence>${sum.avgCadence}</Cadence>`] : []),
+    ...(sum.avgCadence && !run ? [`        <Cadence>${sum.avgCadence}</Cadence>`] : []),
     '        <TriggerMethod>Manual</TriggerMethod>',
     '        <Track>',
     points,
@@ -70,7 +80,7 @@ export function toGpx(s: Session): string {
     `  <metadata><name>${esc(s.workoutName)}</name><time>${iso(start)}</time></metadata>`,
     '  <trk>',
     `    <name>${esc(s.workoutName)}</name>`,
-    '    <type>VirtualRide</type>',
+    `    <type>${s.sport === 'run' ? 'running' : 'VirtualRide'}</type>`,
     '    <trkseg>',
     points,
     '    </trkseg>',

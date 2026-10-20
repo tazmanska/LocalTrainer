@@ -5,6 +5,8 @@ import { deleteSession, exportUrl, getSession, listSessions } from '../api';
 import { WorkoutChart } from '../components/WorkoutChart';
 import { fmtTime, pl, plural } from '../format';
 import { Stat } from '../components/Stat';
+import { paceText } from '../../shared/treadmill';
+import { TreadmillChart } from './TreadmillScreen';
 
 const DAYS = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb'];
 const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
@@ -66,14 +68,30 @@ export function HistoryScreen({ initialId }: { initialId?: string }) {
                 <div className="d">{fmtDate(s.startedAt)}</div>
                 <div className="n">{s.workoutName}</div>
               </div>
-              <div className="tss">
-                {Math.round(s.summary.tss)}
-                <small>TSS</small>
-              </div>
+              {s.sport === 'run' ? (
+                <div className="tss">
+                  {pl((s.summary.distance ?? 0) / 1000, 1)}
+                  <small>KM</small>
+                </div>
+              ) : (
+                <div className="tss">
+                  {Math.round(s.summary.tss)}
+                  <small>TSS</small>
+                </div>
+              )}
               <div className="s">
                 <span>{fmtTime(s.summary.duration)}</span>
-                <span>{s.summary.avgPower} W</span>
-                <span>NP {s.summary.np} W</span>
+                {s.sport === 'run' ? (
+                  <>
+                    <span>bieżnia</span>
+                    <span>{paceText(s.summary.avgSpeed ?? 0)} /km</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{s.summary.avgPower} W</span>
+                    <span>NP {s.summary.np} W</span>
+                  </>
+                )}
                 {s.summary.avgHr && <span>♥ {s.summary.avgHr}</span>}
                 {s.source === 'sim' && <span>symulacja</span>}
               </div>
@@ -82,7 +100,11 @@ export function HistoryScreen({ initialId }: { initialId?: string }) {
         </div>
       </div>
       {detail && detail.id === selected ? (
-        <SessionDetail key={detail.id} s={detail} onDelete={() => remove(detail.id)} />
+        detail.sport === 'run' ? (
+          <RunDetail key={detail.id} s={detail} onDelete={() => remove(detail.id)} />
+        ) : (
+          <SessionDetail key={detail.id} s={detail} onDelete={() => remove(detail.id)} />
+        )
       ) : (
         <div className="panel detail placeholder">{selected ? 'Wczytywanie…' : 'Wybierz sesję z listy.'}</div>
       )}
@@ -199,6 +221,69 @@ function SessionDetail({ s, onDelete }: { s: Session; onDelete: () => void }) {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RunDetail({ s, onDelete }: { s: Session; onDelete: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  const sum = s.summary;
+  const hz = useMemo(() => timeInZones(s.samples, HR_ZONES.length, (x) => (x.hr ? zoneIndex(HR_ZONES, s.maxHr, x.hr) : null)), [s]);
+  const intervals = s.intervals?.length ? s.intervals : [{ label: 'Bieg', duration: sum.duration, speed: sum.avgSpeed ?? 0 }];
+  return (
+    <div className="panel detail">
+      <div className="hd">
+        <div>
+          <div className="lbl">{fmtDate(s.startedAt)} · bieżnia</div>
+          <h2 className="title">{s.workoutName}</h2>
+          <div className="file">HRmax {s.maxHr}</div>
+        </div>
+        <div className="actions">
+          <a className="btn primary" href={exportUrl(s.id, 'tcx')} download title="Strava, Garmin Connect">
+            Pobierz TCX
+          </a>
+          <a className="btn" href={exportUrl(s.id, 'gpx')} download>
+            Pobierz GPX
+          </a>
+          {confirm ? (
+            <>
+              <button className="btn danger" type="button" onClick={onDelete}>
+                Usuń na pewno
+              </button>
+              <button className="btn" type="button" onClick={() => setConfirm(false)}>
+                Anuluj
+              </button>
+            </>
+          ) : (
+            <button className="btn danger" type="button" onClick={() => setConfirm(true)}>
+              Usuń
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="stats">
+        <Stat k="Czas" v={fmtTime(sum.duration)} />
+        <Stat k="Dystans" v={`${pl((sum.distance ?? 0) / 1000, 2)} km`} />
+        <Stat k="Śr. prędkość" v={`${pl(sum.avgSpeed ?? 0, 1)} km/h`} />
+        <Stat k="Śr. tempo" v={`${paceText(sum.avgSpeed ?? 0)} /km`} />
+        <Stat k="Śr. tętno" v={sum.avgHr ? `${sum.avgHr} bpm` : '–'} />
+        <Stat k="Maks. tętno" v={sum.maxHr ? `${sum.maxHr} bpm` : '–'} />
+        {sum.avgCadence ? <Stat k="Kadencja" v={`${sum.avgCadence} kr./min`} /> : null}
+      </div>
+      <div className="chartbox flat">
+        <div className="legend">
+          <span className="lbl grow">Prędkość na tle planu</span>
+          <span>
+            <i style={{ background: 'var(--fg)' }} />
+            prędkość bieżni
+          </span>
+        </div>
+        <TreadmillChart intervals={intervals} speeds={s.samples.map((x) => x.speed ?? null)} />
+      </div>
+      <div className="inzones">
+        <div className="lbl">Czas w strefach tętna</div>
+        <ZoneBar label="Tętno" times={hz} color={(i) => `var(--h${i + 1})`} />
       </div>
     </div>
   );

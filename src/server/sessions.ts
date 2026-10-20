@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { summarize, type Session, type SessionInput, type SessionListItem } from '../shared/session.js';
+import { summarizeSession, type Session, type SessionInput, type SessionListItem } from '../shared/session.js';
 
 const ID_RE = /^\d{8}-\d{6}(-\d+)?$/;
 
@@ -24,7 +24,7 @@ export class SessionStore {
     for (const f of files.filter((f) => f.endsWith('.json'))) {
       try {
         const s: Session = JSON.parse(await readFile(path.join(this.dir, f), 'utf8'));
-        out.push({ id: s.id, workoutName: s.workoutName, startedAt: s.startedAt, source: s.source, summary: s.summary });
+        out.push({ id: s.id, workoutName: s.workoutName, startedAt: s.startedAt, source: s.source, summary: s.summary, sport: s.sport ?? 'bike' });
       } catch {
         // pomijamy uszkodzony plik zamiast blokować całą historię
       }
@@ -47,7 +47,7 @@ export class SessionStore {
     const base = new Date(input.startedAt).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
     let id = base;
     for (let i = 2; (await this.get(id)) !== null; i++) id = `${base}-${i}`;
-    const session: Session = { id, ...input, summary: summarize(input.samples, input.ftp) };
+    const session: Session = { id, ...input, summary: summarizeSession(input) };
     const file = path.join(this.dir, `${id}.json`);
     await writeFile(`${file}.tmp`, JSON.stringify(session), 'utf8');
     await rename(`${file}.tmp`, file);
