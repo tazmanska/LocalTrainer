@@ -14,11 +14,12 @@ import {
 import { deleteTreadmillWorkout, getProfile, listTreadmillWorkouts, saveTreadmillWorkout } from '../api';
 import { useDeviceChanges } from '../components/DevicesPanel';
 import { DurationInput, Stepper } from '../components/DurationInput';
+import { Sparkline } from '../components/Sparkline';
 import { Stat } from '../components/Stat';
 import { bluetoothUnavailable, type BleSource } from '../devices/ble';
 import type { TreadmillData } from '../devices/protocol';
 import type { DeviceInfo } from '../devices/source';
-import { fmtMinutes, fmtTime, pl } from '../format';
+import { changeOf, fmtMinutes, fmtTime, pl } from '../format';
 import { TreadmillRunner } from '../session/treadmill';
 import { countdownBeep, loadMuted, segmentStartBeep, storeMuted, unlockAudio } from '../sound';
 
@@ -442,6 +443,15 @@ function TreadmillChart({ intervals, mini, progress, speeds }: { intervals: read
 
 // ---------- trening ----------
 
+/** okno wykresów w tle kafelków, s */
+const SPARK_WINDOW = 180;
+const BELT_WAIT_S = 15;
+
+/** Prędkość docelowa następnego odcinka; null na ostatnim. */
+function nextSpeed(r: TreadmillRunner): number | null {
+  return r.index + 1 < r.workout.intervals.length ? r.speedOf(r.index + 1) : null;
+}
+
 function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWorkout; ble: BleSource; maxHr: number; onClose: () => void }) {
   useDeviceChanges(ble);
   const tm = ble.treadmill;
@@ -457,6 +467,11 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
   mutedRef.current = muted;
   const redraw = () => setFrame((f) => f + 1);
   const connected = tm.state === 'connected';
+  /**
+   * Po starcie taśma rusza z opóźnieniem (bieżnia odlicza kilka sekund), więc zegar treningu stoi,
+   * dopóki bieżnia nie zgłosi prędkości; najwyżej BELT_WAIT_S sekund, gdyby nie podawała jej wcale.
+   */
+  const beltWait = useRef(0);
 
   /** Wysyła bieżący cel na bieżnię (tylko w trakcie biegu, żeby nie ruszyć taśmy w pauzie). */
   const sendTarget = () => {
@@ -473,17 +488,23 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
       if (e === 'started') {
         if (r.startedAt && !r.running && !r.finished) {
           r.start();
+          beltWait.current = BELT_WAIT_S;
           sendTarget();
         }
       } else r.pause();
       redraw();
     });
     const timer = setInterval(() => {
-      if (r.running) {
-        r.tick({ speed: data.current.speedKph, hr: hrRef.current });
+      const moving = (data.current.speedKph ?? 0) > 0.3;
+      if (r.running && beltWait.current > 0 && !moving && tm.state === 'connected') {
+        beltWait.current--;
+        sendTarget();
+      } else if (r.running) {
+        beltWait.current = 0;
+        r.tick({ speed: data.current.speedKph, hr: hrRef.current, distanceM: data.current.distanceM });
         if (!mutedRef.current) {
           if (r.finished || r.intervalElapsed === 0) segmentStartBeep();
-          else if (r.intervalRemaining >= 1 && r.intervalRemaining <= 5) countdownBeep();
+          else if (r.intervalRemaining >= 1 && r.intervalRemaining <= 5) countdownBeep(changeOf(r.targetSpeed(), nextSpeed(r)));
         }
         if (r.finished) {
           void tm.stop();
@@ -515,6 +536,7 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
     } else {
       unlockAudio();
       r.start();
+      if (connected) beltWait.current = BELT_WAIT_S;
       tm.setTarget(r.targetSpeed(), r.targetIncline());
       void tm.start();
     }
@@ -549,6 +571,9 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
   const hrs = r.samples.map((s) => s.hr).filter((h): h is number => !!h);
   const avgHr = hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null;
   const avgSpeed = r.elapsed ? (r.distance / r.elapsed) * 3.6 : 0;
+  const nextS = nextSpeed(r);
+  const recent = r.samples.slice(-SPARK_WINDOW);
+  const waitingForBelt = r.running && beltWait.current > 0;
 
   return (
     <section className={r.running ? 'tm-run' : 'tm-run is-paused'}>
@@ -571,6 +596,7 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
               {ble.heartRate.state === 'connected' ? ble.heartRate.label || 'Pas tętna' : 'Tętno z bieżni'}
             </span>
             {started && !r.running && !r.finished && <span className="chip paused-tag">Pauza</span>}
+            {waitingForBelt && <span className="chip paused-tag">Czekam, aż taśma ruszy…</span>}
           </div>
           {tm.message && tm.state === 'error' && <p className="err small">{tm.message}</p>}
         </div>
@@ -593,6 +619,11 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
             <div className="num">
               {pl(target, 1)}
               <span className="unit">km/h</span>
+              {nextS !== null && (
+                <span className={`next-tgt ${changeOf(target, nextS)}`} title="Prędkość następnego odcinka">
+                  → {pl(nextS, 1)}
+                </span>
+              )}
             </div>
             <div className="sub">
               tempo {paceText(target)} /km
@@ -619,6 +650,14 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
         </div>
 
         <div className="panel tile tm-speed" style={{ '--zc': speedColor(speed ?? 0) } as React.CSSProperties}>
+          <Sparkline
+            values={recent.map((x) => x.speed)}
+            reference={recent.map((x) => x.target)}
+            window={SPARK_WINDOW}
+            min={0}
+            max={r.maxSpeed * 1.05}
+            colorOf={speedColor}
+          />
           <div className="lbl">Prędkość bieżni</div>
           <div className="num mega">
             {speed === null ? '–' : pl(speed, 1)}
@@ -638,6 +677,13 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
 
         <div className="side">
           <div className={hr > 0 ? 'panel tile metric hr zoned' : 'panel tile metric hr'} style={{ '--zc': `var(--h${hz + 1})` } as React.CSSProperties}>
+            <Sparkline
+              values={recent.map((x) => (x.hr ? x.hr : null))}
+              window={SPARK_WINDOW}
+              min={Math.round(maxHr * 0.45)}
+              max={maxHr}
+              colorOf={(h) => `var(--h${zoneIndex(HR_ZONES, maxHr, h) + 1})`}
+            />
             <div className="row">
               <div className="lbl">Tętno</div>
               {hr > 0 && (

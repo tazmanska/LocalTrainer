@@ -305,3 +305,8 @@ main.full { max-width: none; }
   nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   nav button { white-space: nowrap; padding-inline: 0.6rem; }
 }
+
+/* Cel następnego etapu obok bieżącego: czerwony, gdy będzie mocniej/szybciej, zielony, gdy lżej */
+.next-tgt { font-size: 0.42em; font-weight: 600; margin-left: 0.5em; white-space: nowrap; color: var(--muted); vertical-align: 0.15em; }
+.next-tgt.up { color: color-mix(in oklab, var(--z6) 72%, var(--bg)); }
+.next-tgt.down { color: color-mix(in oklab, var(--ok) 72%, var(--bg)); }

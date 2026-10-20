@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balanceLevel, cadenceLevel, plural } from './format';
+import { balanceLevel, cadenceLevel, changeOf, plural } from './format';
 
 describe('progi kolorów', () => {
   it('balans: 50/50 i 51/49 zielony, 52/48 żółty, 53/47 i więcej czerwony', () => {
@@ -25,5 +25,16 @@ describe('progi kolorów', () => {
     expect(plural(3, 'sesja', 'sesje', 'sesji')).toBe('3 sesje');
     expect(plural(12, 'sesja', 'sesje', 'sesji')).toBe('12 sesji');
     expect(plural(22, 'sesja', 'sesje', 'sesji')).toBe('22 sesje');
+  });
+});
+
+describe('changeOf', () => {
+  it('porównuje cel następnego etapu z bieżącym', () => {
+    expect(changeOf(200, 250)).toBe('up');
+    expect(changeOf(10, 6)).toBe('down');
+    expect(changeOf(200, 200)).toBe('same');
+    expect(changeOf(null, 200)).toBe('same');
+    expect(changeOf(200, null)).toBe('same');
+    expect(changeOf(200, undefined)).toBe('same');
   });
 });

@@ -47,4 +47,16 @@ describe('TreadmillRunner', () => {
     expect(slow.offset).toBe(-3);
     expect(slow.speedOf(2)).toBe(2);
   });
+
+  it('dystans liczy z licznika bieżni, a po pauzie nie dolicza przejechanych w tym czasie metrów', () => {
+    const r = new TreadmillRunner(workout);
+    r.start();
+    r.tick({ speed: 6, hr: null, distanceM: 1000 }); // pierwszy odczyt: z prędkości
+    r.tick({ speed: 5.5, hr: null, distanceM: 1001.5 });
+    expect(r.distance).toBeCloseTo(6 / 3.6 + 1.5);
+    r.pause();
+    r.start();
+    r.tick({ speed: 6, hr: null, distanceM: 1050 });
+    expect(r.distance).toBeCloseTo(6 / 3.6 + 1.5 + 6 / 3.6);
+  });
 });

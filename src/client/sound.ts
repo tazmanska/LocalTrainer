@@ -32,8 +32,11 @@ function tone(freq: number, seconds: number, volume = 0.25) {
   osc.stop(t + seconds + 0.02);
 }
 
-/** Odliczanie ostatnich sekund etapu. */
-export const countdownBeep = () => tone(880, 0.12);
+/** Kierunek zmiany celu na następnym etapie: wyżej, niżej albo bez zmiany. */
+export type Change = 'up' | 'down' | 'same';
+
+/** Odliczanie ostatnich sekund etapu: wyższy ton, gdy następny etap jest mocniejszy (szybszy), niższy, gdy lżejszy. */
+export const countdownBeep = (change: Change = 'same') => tone(change === 'up' ? 1175 : change === 'down' ? 587 : 880, 0.12);
 /** Początek nowego etapu: wyższy i dłuższy ton. */
 export const segmentStartBeep = () => tone(1320, 0.4, 0.3);
 

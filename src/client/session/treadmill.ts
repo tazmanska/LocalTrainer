@@ -22,6 +22,7 @@ export class TreadmillRunner {
   running = false;
   /** dystans liczony z prędkości zmierzonej (albo docelowej, gdy bieżnia jej nie podaje), m */
   distance = 0;
+  private lastDistanceM: number | null = null;
   readonly samples: TreadmillSample[] = [];
   startedAt: Date | null = null;
 
@@ -78,14 +79,19 @@ export class TreadmillRunner {
 
   pause() {
     this.running = false;
+    this.lastDistanceM = null;
   }
 
   /** Jedna sekunda treningu. */
-  tick(r: { speed: number | null; hr: number | null }) {
+  tick(r: { speed: number | null; hr: number | null; distanceM?: number | null }) {
     if (!this.running || this.finished) return;
     const target = this.targetSpeed();
     this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr });
-    this.distance += (r.speed ?? target) / 3.6;
+    // Dystans z licznika bieżni (przyrost od poprzedniej sekundy), a bez niego z prędkości.
+    const d = r.distanceM ?? null;
+    const step = d !== null && this.lastDistanceM !== null ? d - this.lastDistanceM : null;
+    this.distance += step !== null && step >= 0 && step < 10 ? step : (r.speed ?? target) / 3.6;
+    this.lastDistanceM = d;
     this.elapsed++;
     if (this.finished) this.running = false;
   }

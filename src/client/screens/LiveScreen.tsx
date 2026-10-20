@@ -9,7 +9,7 @@ import { WorkoutChart } from '../components/WorkoutChart';
 import type { BleSource } from '../devices/ble';
 import { SimulatedSource } from '../devices/simulated';
 import type { DataSource, Reading } from '../devices/source';
-import { balanceLevel, cadenceLevel, fmtTime, pl } from '../format';
+import { balanceLevel, cadenceLevel, changeOf, fmtTime, pl } from '../format';
 import { countdownBeep, loadMuted, segmentStartBeep, storeMuted, unlockAudio } from '../sound';
 import { WorkoutRunner } from '../session/runner';
 
@@ -74,7 +74,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
         // Sygnał: pik w każdej z ostatnich 5 s etapu, dłuższy wyższy ton na starcie kolejnego etapu i na końcu treningu.
         if (!mutedRef.current) {
           if (r.finished || r.segmentElapsed === 0) segmentStartBeep();
-          else if (r.segmentRemaining >= 1 && r.segmentRemaining <= 5) countdownBeep();
+          else if (r.segmentRemaining >= 1 && r.segmentRemaining <= 5) countdownBeep(changeOf(r.targetWatts(), nextTargetWatts(r, profile.ftp)));
         }
         src.setTargetPower(r.targetWatts());
         if (r.finished) setEnding(true);
@@ -165,6 +165,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const next = r.workout.segments[r.segmentIndex + 1];
   const tgtPct = r.targetPct();
   const tgtW = r.targetWatts();
+  const nextW = nextTargetWatts(r, profile.ftp);
   const ramp = seg.p0 !== null && seg.p1 !== null && seg.p0 !== seg.p1;
   const W = (p: number | null) => (p === null ? null : Math.round(p * r.bias * profile.ftp));
 
@@ -241,6 +242,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
             <div className="num">
               <Fixed d={3}>{tgtW ?? '–'}</Fixed>
               <span className="unit">W</span>
+              {nextW !== null && (
+                <span className={`next-tgt ${changeOf(tgtW, nextW)}`} title="Moc docelowa następnego etapu">
+                  → {nextW}
+                </span>
+              )}
             </div>
             <div className="sub">
               {tgtPct === null
@@ -472,6 +478,12 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
       )}
     </section>
   );
+}
+
+/** Moc docelowa na początku następnego etapu (z korektą intensywności); null = brak etapu albo jazda swobodna. */
+function nextTargetWatts(r: WorkoutRunner, ftp: number): number | null {
+  const n = r.workout.segments[r.segmentIndex + 1];
+  return n && n.p0 !== null ? Math.round(n.p0 * r.bias * ftp) : null;
 }
 
 function ZoneScale(props: { zones: readonly ZoneDef[]; reference: number; value: number; color: (i: number) => string; ticks: string[] }) {

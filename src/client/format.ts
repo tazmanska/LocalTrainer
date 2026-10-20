@@ -32,6 +32,12 @@ export function plural(n: number, one: string, few: string, many: string): strin
   return `${n} ${d >= 2 && d <= 4 && !(t >= 12 && t <= 14) ? few : many}`;
 }
 
+/** Porównanie celu następnego etapu z bieżącym; brak któregoś (jazda swobodna, ostatni etap) = bez zmiany. */
+export function changeOf(current: number | null, next: number | null | undefined): 'up' | 'down' | 'same' {
+  if (current === null || next === null || next === undefined || next === current) return 'same';
+  return next > current ? 'up' : 'down';
+}
+
 export type Level = 'good' | 'warn' | 'bad';
 
 /** Balans L/P: różnica między nogami w pkt % (51/49 → 2): do 2 dobrze, do 4 uwaga, od 6 źle. */
