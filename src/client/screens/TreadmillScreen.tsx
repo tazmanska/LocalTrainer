@@ -14,6 +14,7 @@ import {
 import { deleteTreadmillWorkout, getProfile, listTreadmillWorkouts, saveTreadmillWorkout } from '../api';
 import { useDeviceChanges } from '../components/DevicesPanel';
 import { DurationInput, Stepper } from '../components/DurationInput';
+import { useFullscreen } from '../components/fullscreen';
 import { Sparkline } from '../components/Sparkline';
 import { Stat } from '../components/Stat';
 import { bluetoothUnavailable, type BleSource } from '../devices/ble';
@@ -467,6 +468,7 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
   mutedRef.current = muted;
   const redraw = () => setFrame((f) => f + 1);
   const connected = tm.state === 'connected';
+  const { isFull, toggle: fullscreen, exit: exitFull } = useFullscreen();
   /**
    * Po starcie taśma rusza z opóźnieniem (bieżnia odlicza kilka sekund), więc zegar treningu stoi,
    * dopóki bieżnia nie zgłosi prędkości; najwyżej BELT_WAIT_S sekund, gdyby nie podawała jej wcale.
@@ -556,6 +558,7 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
     redraw();
   };
   const finish = () => {
+    exitFull();
     r.pause();
     void tm.stop();
     onClose();
@@ -750,6 +753,9 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
         >
           {muted ? 'Dźwięk: wył.' : 'Dźwięk: wł.'}
         </button>
+        <button className="btn big" type="button" onClick={fullscreen}>
+          {isFull ? 'Zamknij pełny ekran' : 'Pełny ekran'}
+        </button>
         <button
           className="btn big danger"
           type="button"
@@ -779,6 +785,11 @@ function TreadmillRun({ workout, ble, maxHr, onClose }: { workout: TreadmillWork
               <button className="btn primary" type="button" onClick={finish} autoFocus>
                 {r.finished ? 'Zamknij' : 'Zakończ i zatrzymaj bieżnię'}
               </button>
+              {isFull && (
+                <button className="btn" type="button" onClick={exitFull}>
+                  Zamknij pełny ekran
+                </button>
+              )}
               {!r.finished && (
                 <button className="btn" type="button" onClick={() => setEnding(false)}>
                   Wróć do treningu

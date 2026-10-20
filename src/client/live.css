@@ -230,6 +230,7 @@ main.full { max-width: none; }
 
 /* Bieżnia */
 .tm-run { display: grid; gap: 0.8rem; grid-template-rows: auto minmax(0, 1fr) auto auto; min-height: calc(100dvh - 5rem - 32px); }
+:root:fullscreen .tm-run { min-height: calc(100dvh - 1.1rem - 0.8rem); }
 .tm-top { display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; align-items: stretch; }
 .tm-top .panel { padding: 0.9rem 1.1rem; }
 .tm-top .wk p { margin-top: 8px; }
