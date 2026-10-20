@@ -269,6 +269,7 @@ function RunDetail({ s, onDelete }: { s: Session; onDelete: () => void }) {
         <Stat k="Śr. tempo" v={`${paceText(sum.avgSpeed ?? 0)} /km`} />
         <Stat k="Śr. tętno" v={sum.avgHr ? `${sum.avgHr} bpm` : '–'} />
         <Stat k="Maks. tętno" v={sum.maxHr ? `${sum.maxHr} bpm` : '–'} />
+        {sum.steps != null && <Stat k="Kroki" v={String(sum.steps)} />}
         {sum.avgCadence ? <Stat k="Kadencja" v={`${sum.avgCadence} kr./min`} /> : null}
       </div>
       <div className="chartbox flat">

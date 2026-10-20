@@ -35,6 +35,9 @@ import {
   parseSpeedRange,
   parseTreadmillData,
   type TreadmillData,
+  parseRscMeasurement,
+  RSC_MEASUREMENT,
+  RSC_SERVICE,
 } from './protocol';
 import type { Reading } from './source';
 
@@ -398,5 +401,32 @@ describe('BleTreadmill', () => {
     );
     expect(src.treadmill.state).toBe('error');
     expect(src.treadmill.message).toMatch(/nie jest bieżnią/);
+  });
+});
+
+describe('kroki z Running Speed and Cadence', () => {
+  it('czyta kadencję i prędkość', () => {
+    // flagi 0x04 (bieg), prędkość 2,78 m/s = 712/256, kadencja 164 kroki/min
+    expect(parseRscMeasurement(dv(0x04, 0xc8, 0x02, 164))).toEqual({ speedKph: (712 / 256) * 3.6, cadence: 164 });
+    expect(parseRscMeasurement(dv(0x04, 0xc8))).toBeNull();
+  });
+
+  it('bieżnia z RSC dokłada kadencję do odczytów, bez RSC jej nie ma', async () => {
+    const data = new FakeChar();
+    const rsc = new FakeChar();
+    const src = new BleSource();
+    const got: TreadmillData[] = [];
+    src.onTreadmill((d) => got.push(d));
+    await src.treadmill.connectDevice(
+      fakeDevice({ [FTMS_SERVICE]: { [FTMS_CONTROL_POINT]: new FakeChar(), [FTMS_TREADMILL_DATA]: data }, [RSC_SERVICE]: { [RSC_MEASUREMENT]: rsc } }),
+    );
+    expect(src.treadmill.hasCadence).toBe(true);
+    rsc.push(dv(0x04, 0xc8, 0x02, 164));
+    data.push(dv(0x00, 0x00, 0xe8, 0x03));
+    expect(got.at(-1)).toMatchObject({ speedKph: 10, cadence: 164 });
+
+    const src2 = new BleSource();
+    await src2.treadmill.connectDevice(fakeDevice({ [FTMS_SERVICE]: { [FTMS_CONTROL_POINT]: new FakeChar(), [FTMS_TREADMILL_DATA]: new FakeChar() } }));
+    expect(src2.treadmill.hasCadence).toBe(false);
   });
 });

@@ -120,6 +120,8 @@ export interface TreadmillData {
   distanceM: number | null;
   inclinePct: number | null;
   hr: number | null;
+  /** kroki na minutę z Running Speed and Cadence (gdy bieżnia ją ma) */
+  cadence?: number | null;
 }
 
 /** Treadmill Data (0x2ACD): pola występują w kolejności bitów flag. */
@@ -191,6 +193,17 @@ export function parseMachineStatus(data: DataView): MachineEvent {
   if (op === 0x02) return data.byteLength >= 2 && data.getUint8(1) === PAUSE ? 'paused' : 'stopped';
   if (op === 0x04) return 'started';
   return null;
+}
+
+// ---------- Running Speed and Cadence (kroki na bieżni lub z czujnika) ----------
+
+export const RSC_SERVICE = 0x1814;
+export const RSC_MEASUREMENT = 0x2a53;
+
+/** RSC Measurement (0x2A53): flagi, prędkość (1/256 m/s), kadencja (kroki/min), opcjonalnie długość kroku i dystans. */
+export function parseRscMeasurement(data: DataView): { speedKph: number; cadence: number } | null {
+  if (data.byteLength < 4) return null;
+  return { speedKph: (data.getUint16(1, true) / 256) * 3.6, cadence: data.getUint8(3) };
 }
 
 // ---------- Heart Rate Service ----------

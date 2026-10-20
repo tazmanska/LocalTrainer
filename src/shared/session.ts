@@ -42,6 +42,8 @@ export interface SessionSummary {
   distance?: number;
   /** bieg: średnia prędkość, km/h */
   avgSpeed?: number;
+  /** bieg: kroki (z kadencji); null, gdy bieżnia nie podawała kadencji */
+  steps?: number | null;
 }
 
 export interface SessionInput {
@@ -123,7 +125,9 @@ export function summarizeRun(samples: readonly Sample[], ftp: number): SessionSu
   const base = summarize(samples, ftp);
   const raw = samples.at(-1)?.distance ?? 0;
   const n = samples.length;
-  return { ...base, distance: Math.round(raw), avgSpeed: n ? Math.round((raw / n) * 3.6 * 10) / 10 : 0 };
+  const cads = samples.filter((s) => s.cadence !== null);
+  const steps = cads.length ? Math.round(cads.reduce((a, s) => a + s.cadence! / 60, 0)) : null;
+  return { ...base, distance: Math.round(raw), avgSpeed: n ? Math.round((raw / n) * 3.6 * 10) / 10 : 0, steps };
 }
 
 export const summarizeSession = (s: Pick<SessionInput, 'samples' | 'ftp' | 'sport'>) =>

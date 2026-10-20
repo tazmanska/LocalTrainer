@@ -48,6 +48,9 @@ import {
   parsePowerMeasurement,
   parseSpeedRange,
   parseTreadmillData,
+  parseRscMeasurement,
+  RSC_MEASUREMENT,
+  RSC_SERVICE,
   PAUSE,
   type MachineEvent,
   type Range,
@@ -611,6 +614,9 @@ export class BleFan extends BleDevice {
 export class BleTreadmill extends BleDevice {
   speedRange: Range | null = null;
   inclineRange: Range | null = null;
+  /** bieżnia podaje kadencję (kroki/min) przez Running Speed and Cadence */
+  hasCadence = false;
+  private cadence: number | null = null;
   private cp: BluetoothRemoteGATTCharacteristic | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private desired: { speed: number; incline: number | null } | null = null;
@@ -627,7 +633,7 @@ export class BleTreadmill extends BleDevice {
   }
 
   protected requestOptions(): RequestDeviceOptions {
-    return { filters: [{ services: [FTMS_SERVICE] }], optionalServices: [FTMS_SERVICE] };
+    return { filters: [{ services: [FTMS_SERVICE] }], optionalServices: [FTMS_SERVICE, RSC_SERVICE] };
   }
 
   /** Najwyższa prędkość do ustawienia: limit aplikacji albo niższy limit bieżni. */
@@ -664,6 +670,19 @@ export class BleTreadmill extends BleDevice {
     } catch {
       // status jest opcjonalny
     }
+    // Kroki: tylko gdy bieżnia ma też usługę Running Speed and Cadence (FTMS ich nie przesyła).
+    this.hasCadence = false;
+    try {
+      const rsc = await getService(device, RSC_SERVICE, true);
+      if (rsc) {
+        const m = await rsc.getCharacteristic(RSC_MEASUREMENT);
+        m.addEventListener('characteristicvaluechanged', this.onRsc);
+        await m.startNotifications();
+        this.hasCadence = true;
+      }
+    } catch {
+      // brak uprawnień (bieżnia sparowana przed dodaniem kroków) albo usługi; kroków po prostu nie ma
+    }
     this.speedRange = await readRange(ftms, FTMS_SUPPORTED_SPEED_RANGE, parseSpeedRange);
     this.inclineRange = await readRange(ftms, FTMS_SUPPORTED_INCLINE_RANGE, parseInclineRange);
     await this.write(Uint8Array.of(OP_REQUEST_CONTROL));
@@ -676,7 +695,8 @@ export class BleTreadmill extends BleDevice {
     this.cp = null;
     this.queue = Promise.resolve();
     this.writing = false;
-    this.emit({ speedKph: null, distanceM: null, inclinePct: null, hr: null });
+    this.cadence = null;
+    this.emit({ speedKph: null, distanceM: null, inclinePct: null, hr: null, cadence: null });
   }
 
   /** Uruchomienie lub wznowienie taśmy i ustawienie bieżącego celu. */
@@ -771,7 +791,13 @@ export class BleTreadmill extends BleDevice {
   };
 
   private onData = (e: Event) => {
-    this.emit(parseTreadmillData((e.target as BluetoothRemoteGATTCharacteristic).value!));
+    const d = parseTreadmillData((e.target as BluetoothRemoteGATTCharacteristic).value!);
+    this.emit(this.hasCadence ? { ...d, cadence: this.cadence } : d);
+  };
+
+  private onRsc = (e: Event) => {
+    const m = parseRscMeasurement((e.target as BluetoothRemoteGATTCharacteristic).value!);
+    if (m) this.cadence = m.cadence;
   };
 
   private onStatus = (e: Event) => {

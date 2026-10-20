@@ -528,7 +528,7 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
         sendTarget();
       } else if (r.running) {
         beltWait.current = 0;
-        r.tick({ speed: data.current.speedKph, hr: hrRef.current, distanceM: data.current.distanceM });
+        r.tick({ speed: data.current.speedKph, hr: hrRef.current, distanceM: data.current.distanceM, cadence: data.current.cadence });
         if (!mutedRef.current) {
           if (r.finished || r.intervalElapsed === 0) segmentStartBeep();
           else if (r.intervalRemaining >= 1 && r.intervalRemaining <= 5) countdownBeep(changeOf(r.targetSpeed(), nextSpeed(r)));
@@ -762,6 +762,13 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
                 <span className="unit">km</span>
               </div>
               <span className="sub">śr. {kmh(avgSpeed)}</span>
+            </div>
+            <div className="sub" title={tm.hasCadence || r.steps !== null ? undefined : 'FTMS nie przesyła kroków; bieżnia nie ma usługi Running Speed and Cadence'}>
+              {r.steps !== null || data.current.cadence != null
+                ? `kroki ${Math.round(r.steps ?? 0)} · kadencja ${data.current.cadence ?? '–'} kr./min`
+                : connected
+                  ? 'kroki: bieżnia ich nie podaje'
+                  : 'kroki: brak danych'}
             </div>
           </div>
         </div>
