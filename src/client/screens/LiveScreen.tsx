@@ -12,6 +12,7 @@ import type { DataSource, Reading } from '../devices/source';
 import { balanceLevel, cadenceLevel, changeOf, fmtTime, pl } from '../format';
 import { countdownBeep, loadMuted, segmentStartBeep, storeMuted, unlockAudio } from '../sound';
 import { WorkoutRunner } from '../session/runner';
+import { useFullscreen } from '../components/fullscreen';
 
 interface Props {
   workout: Workout;
@@ -125,17 +126,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
     redraw();
   };
   // Etykieta przycisku podąża za stanem pełnego ekranu, także po wyjściu klawiszem Esc.
-  const [isFull, setIsFull] = useState(() => !!document.fullscreenElement);
-  useEffect(() => {
-    const on = () => setIsFull(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', on);
-    return () => document.removeEventListener('fullscreenchange', on);
-  }, []);
-
-  const fullscreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void document.documentElement.requestFullscreen?.().catch(() => {});
-  };
+  const { isFull, toggle: fullscreen, exit: exitFull } = useFullscreen();
 
   async function save() {
     setSaving(true);
@@ -152,7 +143,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
         segments: workout.segments,
         samples: r.samples,
       });
-      if (document.fullscreenElement) void document.exitFullscreen();
+      exitFull();
       onSaved(s.id);
     } catch (e) {
       setError((e as Error).message);
@@ -469,7 +460,20 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
                   Wróć do treningu
                 </button>
               )}
-              <button className="btn danger" type="button" onClick={onDiscard} disabled={saving}>
+              {isFull && (
+                <button className="btn" type="button" onClick={exitFull} disabled={saving}>
+                  Zamknij pełny ekran
+                </button>
+              )}
+              <button
+                className="btn danger"
+                type="button"
+                onClick={() => {
+                  exitFull();
+                  onDiscard();
+                }}
+                disabled={saving}
+              >
                 {r.samples.length ? 'Odrzuć bez zapisu' : 'Zamknij'}
               </button>
             </div>
