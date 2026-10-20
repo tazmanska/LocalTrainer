@@ -1,3 +1,5 @@
+import type { Segment } from '../shared/workout';
+import { buildZwo } from '../shared/zwo-build';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -62,5 +64,21 @@ describe('workoutStats', () => {
     expect(s.duration).toBe(600 + 3 * 840 + 120 + 60 + 480);
     expect(s.intensity).toBeGreaterThan(s.avg);
     expect(s.max).toBeCloseTo(0.9, 5);
+  });
+});
+
+describe('buildZwo (edytor treningów)', () => {
+  it('zapisany trening wczytuje się z tymi samymi etapami i nazwami', () => {
+    const segments: Segment[] = [
+      { kind: 'warmup', label: 'Rozgrzewka', duration: 600, p0: 0.5, p1: 0.75 },
+      { kind: 'steady', label: 'Próg & <coś>', duration: 300, p0: 0.98, p1: 0.98, cadence: 90 },
+      { kind: 'ramp', label: 'Rampa w dół', duration: 120, p0: 1.1, p1: 0.8 },
+      { kind: 'free', label: 'Luz', duration: 60, p0: null, p1: null },
+      { kind: 'cooldown', label: 'Schłodzenie', duration: 300, p0: 0.6, p1: 0.45 },
+    ];
+    const xml = buildZwo({ name: 'Mój "trening"', segments });
+    const w = parseZwo(xml, 'moj.zwo');
+    expect(w.name).toBe('Mój "trening"');
+    expect(w.segments).toEqual(segments);
   });
 });

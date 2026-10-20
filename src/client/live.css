@@ -267,3 +267,13 @@ main.full { max-width: none; }
 @media (max-width: 1000px) {
   .tm-top, .tm-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Edytor treningów */
+.lib-new { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 0.9rem; }
+.ed-stages { display: grid; gap: 0.4rem; }
+.ed-stage { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.ed-stage .tm-rowbtns { margin-left: auto; }
+.ed-power, .ed-ramp { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.ed-power .sw { margin-right: 0; }
+.tm-editor select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.4rem; color: var(--fg); font: inherit; }
+.ed-power .tm-num input { width: 4rem; }

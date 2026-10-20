@@ -63,6 +63,8 @@ function parseSegments(nodes: Node[]): Segment[] {
     const tag = tagOf(n);
     if (tag === '#text' || tag === '#comment') continue;
     const a = attrsOf(n);
+    // nazwa etapu zapisana przez edytor treningów (atrybut label); inne generatory jej nie mają
+    const named = (fallback: string) => a.label?.trim().slice(0, 40) || fallback;
     switch (tag.toLowerCase()) {
       case 'warmup':
       case 'ramp':
@@ -73,14 +75,14 @@ function parseSegments(nodes: Node[]): Segment[] {
         // Generatory różnie zapisują schłodzenie; zawsze ma opadać.
         if (kind === 'cooldown' && p0 < p1) [p0, p1] = [p1, p0];
         const label = { warmup: 'Rozgrzewka', ramp: 'Rampa', cooldown: 'Schłodzenie' }[kind];
-        out.push({ kind, label, duration: duration(a, tag, 'duration'), p0, p1, ...cadence(a, 'cadence') });
+        out.push({ kind, label: named(label), duration: duration(a, tag, 'duration'), p0, p1, ...cadence(a, 'cadence') });
         break;
       }
       case 'steadystate': {
         const p = num(a, 'power') ?? num(a, 'powerlow');
         if (p === undefined) throw new ZwoError(`Etap ${tag} nie ma atrybutu Power`);
         const pw = power(p, tag);
-        out.push({ kind: 'steady', label: 'Równa jazda', duration: duration(a, tag, 'duration'), p0: pw, p1: pw, ...cadence(a, 'cadence') });
+        out.push({ kind: 'steady', label: named('Równa jazda'), duration: duration(a, tag, 'duration'), p0: pw, p1: pw, ...cadence(a, 'cadence') });
         break;
       }
       case 'intervalst': {
@@ -102,7 +104,7 @@ function parseSegments(nodes: Node[]): Segment[] {
       case 'freeride':
       case 'maxeffort': {
         const label = tag.toLowerCase() === 'freeride' ? 'Jazda swobodna' : 'Maksymalny wysiłek';
-        out.push({ kind: 'free', label, duration: duration(a, tag, 'duration'), p0: null, p1: null, ...cadence(a, 'cadence') });
+        out.push({ kind: 'free', label: named(label), duration: duration(a, tag, 'duration'), p0: null, p1: null, ...cadence(a, 'cadence') });
         break;
       }
       case 'textevent':

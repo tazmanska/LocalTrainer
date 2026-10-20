@@ -4,6 +4,7 @@ import { deleteWorkout, getProfile, importWorkout, listWorkouts } from '../api';
 import { WorkoutChart } from '../components/WorkoutChart';
 import { fmtMinutes, fmtTime, pl, powerColor } from '../format';
 import { Stat } from '../components/Stat';
+import { WorkoutEditor } from './WorkoutEditor';
 
 type Notice = { kind: 'ok' | 'err'; text: string };
 
@@ -14,6 +15,7 @@ export function LibraryScreen({ onStart, devices }: { onStart: (w: Workout) => v
   const [notices, setNotices] = useState<Notice[]>([]);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<Workout | 'new' | null>(null);
 
   useEffect(() => {
     Promise.all([listWorkouts(), getProfile()])
@@ -109,6 +111,12 @@ export function LibraryScreen({ onStart, devices }: { onStart: (w: Workout) => v
             ))}
           </ul>
         )}
+        <div className="lib-new">
+          <button className="btn primary" type="button" onClick={() => setEditing('new')}>
+            Nowy trening
+          </button>
+          <span className="muted small">ułóż etapy samodzielnie: czas i moc w % FTP albo strefa</span>
+        </div>
         <div className="panel devwrap">{devices}</div>
         <div className="list" role="listbox" aria-label="Zapisane treningi">
           {workouts === null && !notices.length && <p className="muted">Wczytywanie…</p>}
@@ -118,8 +126,28 @@ export function LibraryScreen({ onStart, devices }: { onStart: (w: Workout) => v
           ))}
         </div>
       </div>
-      {current ? (
-        <WorkoutDetail key={current.id} w={current} ftp={ftp ?? 200} onStart={() => onStart(current)} onDelete={() => onDelete(current)} />
+      {editing ? (
+        <WorkoutEditor
+          key={editing === 'new' ? 'new' : editing.id}
+          initial={editing === 'new' ? null : editing}
+          ftp={ftp ?? 200}
+          onCancel={() => setEditing(null)}
+          onSaved={async (w) => {
+            setEditing(null);
+            setWorkouts(await listWorkouts());
+            setSelected(w.id);
+            setNotices([{ kind: 'ok', text: `Zapisano ${w.name}` }]);
+          }}
+        />
+      ) : current ? (
+        <WorkoutDetail
+          key={current.id}
+          w={current}
+          ftp={ftp ?? 200}
+          onStart={() => onStart(current)}
+          onEdit={() => setEditing(current)}
+          onDelete={() => onDelete(current)}
+        />
       ) : (
         <div className="panel detail placeholder">Wybierz trening z listy albo wczytaj plik.</div>
       )}
@@ -142,7 +170,7 @@ function WorkoutCard({ w, selected, onSelect }: { w: Workout; selected: boolean;
   );
 }
 
-function WorkoutDetail({ w, ftp, onStart, onDelete }: { w: Workout; ftp: number; onStart: () => void; onDelete: () => void }) {
+function WorkoutDetail({ w, ftp, onStart, onEdit, onDelete }: { w: Workout; ftp: number; onStart: () => void; onEdit: () => void; onDelete: () => void }) {
   const s = useMemo(() => workoutStats(w.segments), [w]);
   const starts = useMemo(() => segmentStarts(w.segments), [w]);
   const [confirm, setConfirm] = useState(false);
@@ -162,6 +190,9 @@ function WorkoutDetail({ w, ftp, onStart, onDelete }: { w: Workout; ftp: number;
         <div className="actions">
           <button className="btn big primary" type="button" onClick={onStart}>
             Rozpocznij trening
+          </button>
+          <button className="btn" type="button" onClick={onEdit}>
+            Edytuj
           </button>
           {confirm ? (
             <>
