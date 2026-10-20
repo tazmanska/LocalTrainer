@@ -3,7 +3,7 @@ import { POWER_ZONES, zoneIndex } from '../../shared/profile';
 import { workoutStats, type Segment, type SegmentKind, type Workout } from '../../shared/workout';
 import { buildZwo } from '../../shared/zwo-build';
 import { deleteWorkout, importWorkout } from '../api';
-import { DurationInput } from '../components/DurationInput';
+import { DurationInput, Stepper } from '../components/DurationInput';
 import { Stat } from '../components/Stat';
 import { WorkoutChart } from '../components/WorkoutChart';
 import { fmtMinutes, pl, powerColor } from '../format';
@@ -97,18 +97,10 @@ function PowerPicker({ value, onChange, ftp, label, allowFree }: { value: number
         {allowFree && <option value="free">Swobodnie</option>}
       </select>
       {value !== null && (
-        <span className="tm-num">
-          <input
-            type="number"
-            min={0}
-            max={500}
-            step={1}
-            value={value}
-            aria-label={`${label}: % FTP`}
-            onChange={(e) => onChange(Math.max(0, Math.min(500, Math.round(Number(e.target.value) || 0))))}
-          />
-          <span>% · {Math.round((value / 100) * ftp)} W</span>
-        </span>
+        <>
+          <Stepper label={`${label}: % FTP`} value={value} onChange={onChange} step={5} min={0} max={500} unit="%" />
+          <span className="muted small">{Math.round((value / 100) * ftp)} W</span>
+        </>
       )}
     </span>
   );
@@ -200,14 +192,14 @@ export function WorkoutEditor({ initial, ftp, onCancel, onSaved }: Props) {
             />
             {s.from !== null &&
               (s.to === null ? (
-                <button type="button" className="linkbtn small" onClick={() => update(i, { to: s.from })}>
+                <button type="button" className="btn" onClick={() => update(i, { to: s.from })}>
                   rampa
                 </button>
               ) : (
                 <span className="ed-ramp">
                   <span className="muted small">do</span>
                   <PowerPicker label={`Moc na końcu etapu ${i + 1}`} ftp={ftp} value={s.to} onChange={(to) => update(i, { to })} />
-                  <button type="button" className="linkbtn small" onClick={() => update(i, { to: null })}>
+                  <button type="button" className="btn" onClick={() => update(i, { to: null })}>
                     stała moc
                   </button>
                 </span>
@@ -236,16 +228,17 @@ export function WorkoutEditor({ initial, ftp, onCancel, onSaved }: Props) {
         </button>
         <div className="tm-rep">
           <span className="lbl">Powtórzenia</span>
-          <span className="tm-num">
-            <input type="number" min={1} max={30} value={rep.reps} aria-label="Liczba powtórzeń" onChange={(e) => setRep({ ...rep, reps: Math.min(30, Math.max(1, Number(e.target.value) || 1)) })} />
-            <span>×</span>
+          <Stepper label="Liczba powtórzeń" value={rep.reps} onChange={(reps) => setRep({ ...rep, reps })} step={1} min={1} max={30} unit="×" />
+          <span className="ed-pair">
+            <span className="muted small">praca</span>
+            <DurationInput label="Czas pracy" value={rep.work} onChange={(work) => setRep({ ...rep, work })} />
+            <PowerPicker label="Moc pracy" ftp={ftp} value={rep.workPct} onChange={(v) => setRep({ ...rep, workPct: v ?? rep.workPct })} />
           </span>
-          <span className="muted small">praca</span>
-          <DurationInput label="Czas pracy" value={rep.work} onChange={(work) => setRep({ ...rep, work })} />
-          <PowerPicker label="Moc pracy" ftp={ftp} value={rep.workPct} onChange={(v) => setRep({ ...rep, workPct: v ?? rep.workPct })} />
-          <span className="muted small">przerwa</span>
-          <DurationInput label="Czas przerwy" value={rep.rest} onChange={(rest) => setRep({ ...rep, rest })} />
-          <PowerPicker label="Moc przerwy" ftp={ftp} value={rep.restPct} onChange={(v) => setRep({ ...rep, restPct: v ?? rep.restPct })} />
+          <span className="ed-pair">
+            <span className="muted small">przerwa</span>
+            <DurationInput label="Czas przerwy" value={rep.rest} onChange={(rest) => setRep({ ...rep, rest })} />
+            <PowerPicker label="Moc przerwy" ftp={ftp} value={rep.restPct} onChange={(v) => setRep({ ...rep, restPct: v ?? rep.restPct })} />
+          </span>
           <button
             className="btn"
             type="button"

@@ -277,3 +277,31 @@ main.full { max-width: none; }
 .ed-power .sw { margin-right: 0; }
 .tm-editor select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.4rem; color: var(--fg); font: inherit; }
 .ed-power .tm-num input { width: 4rem; }
+
+/* Pola dotykowe: duże przyciski −/+ (co najmniej 44 px, także na telefonie z mniejszą czcionką bazową) */
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; }
+.stepper button {
+  min-width: max(2.75rem, 44px); min-height: max(2.75rem, 44px); border: 0; background: var(--panel-2);
+  font-size: 1.3rem; font-weight: 700; line-height: 1; touch-action: manipulation;
+}
+.stepper button:active:not(:disabled) { background: var(--line); }
+.tm-editor .stepper input { width: 3.4rem; border: 0; background: none; text-align: center; font-size: max(1rem, 16px); padding: 0.3rem 0.2rem; -moz-appearance: textfield; appearance: textfield; }
+.stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper .u { font-family: var(--f-mono); font-size: 0.75rem; color: var(--muted); padding: 0 2px; }
+.ed-pair { display: inline-flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.tm-editor .tm-text, .tm-editor select { min-height: max(2.75rem, 44px); font-size: max(1rem, 16px); }
+.tm-rowbtns .btn { min-height: max(2.75rem, 44px); min-width: max(2.75rem, 44px); }
+@media (pointer: coarse) {
+  nav button { min-height: 44px; padding-inline: 0.9rem; }
+  .dev .btn, .btn { min-height: max(2.8rem, 44px); }
+}
+@media (max-width: 640px) {
+  .ed-stage .tm-text { flex: 1 1 100%; width: auto; }
+  .ed-stage .tm-rowbtns { margin-left: 0; }
+  .tm-rep, .ed-pair { width: 100%; }
+  .detail .hd .actions { width: 100%; }
+  .tm-editor select { max-width: 8.5rem; }
+  .ed-stage { gap: 0.4rem 0.5rem; }
+  nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  nav button { white-space: nowrap; padding-inline: 0.6rem; }
+}

@@ -13,7 +13,7 @@ import {
 } from '../../shared/treadmill';
 import { deleteTreadmillWorkout, getProfile, listTreadmillWorkouts, saveTreadmillWorkout } from '../api';
 import { useDeviceChanges } from '../components/DevicesPanel';
-import { DurationInput } from '../components/DurationInput';
+import { DurationInput, Stepper } from '../components/DurationInput';
 import { Stat } from '../components/Stat';
 import { bluetoothUnavailable, type BleSource } from '../devices/ble';
 import type { TreadmillData } from '../devices/protocol';
@@ -281,20 +281,7 @@ const TEMPLATE: TreadmillInterval[] = [
 ];
 
 function SpeedInput({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
-  return (
-    <span className="tm-num">
-      <input
-        type="number"
-        min={TREADMILL_MIN_KPH}
-        max={TREADMILL_MAX_KPH}
-        step={0.1}
-        value={value}
-        aria-label={label}
-        onChange={(e) => onChange(Math.min(TREADMILL_MAX_KPH, Number(e.target.value) || 0))}
-      />
-      <span>km/h</span>
-    </span>
-  );
+  return <Stepper label={label} value={value} onChange={onChange} step={0.5} min={TREADMILL_MIN_KPH} max={TREADMILL_MAX_KPH} digits={1} unit="km/h" />;
 }
 
 function TreadmillEditor({ initial, onCancel, onSaved }: { initial: TreadmillWorkout | null; onCancel: () => void; onSaved: (w: TreadmillWorkout) => void }) {
@@ -354,43 +341,25 @@ function TreadmillEditor({ initial, onCancel, onSaved }: { initial: TreadmillWor
         <Stat k="Odcinki" v={String(intervals.length)} />
       </div>
       <TreadmillChart intervals={intervals} />
-      <div className="tbl-wrap">
-        <table className="tm-rows">
-          <thead>
-            <tr>
-              <th>Odcinek</th>
-              <th>Czas</th>
-              <th>Prędkość</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {intervals.map((it, i) => (
-              <tr key={i}>
-                <td>
-                  <input className="tm-text" value={it.label} maxLength={40} aria-label={`Nazwa odcinka ${i + 1}`} onChange={(e) => update(i, { label: e.target.value })} />
-                </td>
-                <td>
-                  <DurationInput label={`Czas odcinka ${i + 1}`} value={it.duration} onChange={(duration) => update(i, { duration })} />
-                </td>
-                <td>
-                  <SpeedInput label={`Prędkość odcinka ${i + 1}`} value={it.speed} onChange={(speed) => update(i, { speed })} />
-                </td>
-                <td className="r tm-rowbtns">
-                  <button type="button" className="btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Przesuń w górę">
-                    ↑
-                  </button>
-                  <button type="button" className="btn" onClick={() => move(i, 1)} disabled={i === intervals.length - 1} aria-label="Przesuń w dół">
-                    ↓
-                  </button>
-                  <button type="button" className="btn danger" onClick={() => setIntervals((xs) => xs.filter((_, j) => j !== i))} aria-label="Usuń odcinek">
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="ed-stages">
+        {intervals.map((it, i) => (
+          <div className="ed-stage" key={i}>
+            <input className="tm-text" value={it.label} maxLength={40} aria-label={`Nazwa odcinka ${i + 1}`} onChange={(e) => update(i, { label: e.target.value })} />
+            <DurationInput label={`Czas odcinka ${i + 1}`} value={it.duration} onChange={(duration) => update(i, { duration })} />
+            <SpeedInput label={`Prędkość odcinka ${i + 1}`} value={it.speed} onChange={(speed) => update(i, { speed })} />
+            <span className="tm-rowbtns">
+              <button type="button" className="btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Przesuń w górę">
+                ↑
+              </button>
+              <button type="button" className="btn" onClick={() => move(i, 1)} disabled={i === intervals.length - 1} aria-label="Przesuń w dół">
+                ↓
+              </button>
+              <button type="button" className="btn danger" onClick={() => setIntervals((xs) => xs.filter((_, j) => j !== i))} aria-label="Usuń odcinek">
+                ✕
+              </button>
+            </span>
+          </div>
+        ))}
       </div>
       <div className="tm-add">
         <button
@@ -402,16 +371,17 @@ function TreadmillEditor({ initial, onCancel, onSaved }: { initial: TreadmillWor
         </button>
         <div className="tm-rep">
           <span className="lbl">Powtórzenia</span>
-          <span className="tm-num">
-            <input type="number" min={1} max={30} value={rep.reps} aria-label="Liczba powtórzeń" onChange={(e) => setRep({ ...rep, reps: Math.min(30, Math.max(1, Number(e.target.value) || 1)) })} />
-            <span>×</span>
+          <Stepper label="Liczba powtórzeń" value={rep.reps} onChange={(reps) => setRep({ ...rep, reps })} step={1} min={1} max={30} unit="×" />
+          <span className="ed-pair">
+            <span className="muted small">bieg</span>
+            <DurationInput label="Czas biegu" value={rep.work} onChange={(work) => setRep({ ...rep, work })} />
+            <SpeedInput label="Prędkość biegu" value={rep.workSpeed} onChange={(workSpeed) => setRep({ ...rep, workSpeed })} />
           </span>
-          <span className="muted small">bieg</span>
-          <DurationInput label="Czas biegu" value={rep.work} onChange={(work) => setRep({ ...rep, work })} />
-          <SpeedInput label="Prędkość biegu" value={rep.workSpeed} onChange={(workSpeed) => setRep({ ...rep, workSpeed })} />
-          <span className="muted small">przerwa</span>
-          <DurationInput label="Czas przerwy" value={rep.rest} onChange={(rest) => setRep({ ...rep, rest })} />
-          <SpeedInput label="Prędkość przerwy" value={rep.restSpeed} onChange={(restSpeed) => setRep({ ...rep, restSpeed })} />
+          <span className="ed-pair">
+            <span className="muted small">przerwa</span>
+            <DurationInput label="Czas przerwy" value={rep.rest} onChange={(rest) => setRep({ ...rep, rest })} />
+            <SpeedInput label="Prędkość przerwy" value={rep.restSpeed} onChange={(restSpeed) => setRep({ ...rep, restSpeed })} />
+          </span>
           <button
             className="btn"
             type="button"
