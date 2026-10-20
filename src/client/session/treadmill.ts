@@ -9,8 +9,6 @@ export interface TreadmillSample {
   hr: number | null;
   /** dystans od początku treningu, m */
   distance: number;
-  /** kroki na minutę; null = bieżnia ich nie podaje */
-  cadence?: number | null;
 }
 
 /**
@@ -27,8 +25,6 @@ export class TreadmillRunner {
   /** dystans liczony z prędkości zmierzonej (albo docelowej, gdy bieżnia jej nie podaje), m */
   distance = 0;
   private lastDistanceM: number | null = null;
-  /** kroki zliczone z kadencji; null, dopóki bieżnia nie poda kadencji */
-  steps: number | null = null;
   readonly samples: TreadmillSample[] = [];
   startedAt: Date | null = null;
 
@@ -89,7 +85,7 @@ export class TreadmillRunner {
   }
 
   /** Jedna sekunda treningu. */
-  tick(r: { speed: number | null; hr: number | null; distanceM?: number | null; cadence?: number | null }) {
+  tick(r: { speed: number | null; hr: number | null; distanceM?: number | null }) {
     if (!this.running || this.finished) return;
     const target = this.targetSpeed();
     // Dystans z licznika bieżni (przyrost od poprzedniej sekundy), a bez niego z prędkości.
@@ -97,9 +93,7 @@ export class TreadmillRunner {
     const step = d !== null && this.lastDistanceM !== null ? d - this.lastDistanceM : null;
     this.distance += step !== null && step >= 0 && step < 10 ? step : (r.speed ?? target) / 3.6;
     this.lastDistanceM = d;
-    const cadence = r.cadence ?? null;
-    if (cadence !== null) this.steps = (this.steps ?? 0) + cadence / 60;
-    this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr, distance: Math.round(this.distance * 10) / 10, ...(cadence !== null ? { cadence } : {}) });
+    this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr, distance: Math.round(this.distance * 10) / 10 });
     this.elapsed++;
     if (this.finished) this.running = false;
   }
@@ -112,7 +106,7 @@ export class TreadmillRunner {
 
   /** Dane do zapisu w historii (format sesji wspólny z rowerem: bez mocy, z prędkością i dystansem). */
   toSessionSamples() {
-    return this.samples.map((s) => ({ t: s.t, power: null, cadence: s.cadence ?? null, hr: s.hr, target: null, speed: s.speed, targetSpeed: s.target, distance: s.distance }));
+    return this.samples.map((s) => ({ t: s.t, power: null, cadence: null, hr: s.hr, target: null, speed: s.speed, targetSpeed: s.target, distance: s.distance }));
   }
 
   adjust(delta: number) {

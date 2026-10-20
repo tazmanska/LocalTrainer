@@ -59,15 +59,4 @@ describe('TreadmillRunner', () => {
     r.tick({ speed: 6, hr: null, distanceM: 1050 });
     expect(r.distance).toBeCloseTo(6 / 3.6 + 1.5 + 6 / 3.6);
   });
-
-  it('liczy kroki z kadencji, a bez kadencji ich nie ma', () => {
-    const r = new TreadmillRunner(workout);
-    r.start();
-    r.tick({ speed: 6, hr: null });
-    expect(r.steps).toBeNull();
-    r.tick({ speed: 6, hr: null, cadence: 150 });
-    r.tick({ speed: 6, hr: null, cadence: 150 });
-    expect(r.steps).toBe(5);
-    expect(r.toSessionSamples().map((s) => s.cadence)).toEqual([null, 150, 150]);
-  });
 });
