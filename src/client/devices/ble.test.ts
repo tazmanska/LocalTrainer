@@ -386,8 +386,6 @@ describe('BleTreadmill', () => {
     data.push(dv(0x04, 0x00, 0xe8, 0x03, 0x64, 0x00, 0x00)); // prędkość 10 km/h i dystans 100 m
     data.push(dv(0x01, 0x01, 0x8c)); // More Data: bez prędkości, tylko tętno 140
     expect(got.at(-1)).toEqual({ speedKph: 10, distanceM: 100, inclinePct: null, hr: 140 });
-    expect(src.treadmill.packets).toBe(2);
-    expect(src.treadmill.lastRaw).toBe('01 01 8c');
   });
 
   it('pauza zapomina cel, żeby ponowne połączenie nie ruszyło taśmy', async () => {

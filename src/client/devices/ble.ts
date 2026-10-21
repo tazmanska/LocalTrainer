@@ -611,12 +611,8 @@ export class BleFan extends BleDevice {
 export class BleTreadmill extends BleDevice {
   speedRange: Range | null = null;
   inclineRange: Range | null = null;
-  /** ostatnie odczyty (scalone z kolejnych pakietów) i diagnostyka odbioru do panelu urządzeń */
+  /** ostatnie odczyty, scalone z kolejnych pakietów */
   data: TreadmillData = { speedKph: null, distanceM: null, inclinePct: null, hr: null };
-  packets = 0;
-  lastAt = 0;
-  /** ostatni surowy pakiet Treadmill Data (hex), do zgłaszania problemów z konkretną bieżnią */
-  lastRaw = '';
   private cp: BluetoothRemoteGATTCharacteristic | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private desired: { speed: number; incline: number | null } | null = null;
@@ -683,9 +679,6 @@ export class BleTreadmill extends BleDevice {
     this.queue = Promise.resolve();
     this.writing = false;
     this.data = { speedKph: null, distanceM: null, inclinePct: null, hr: null };
-    this.packets = 0;
-    this.lastAt = 0;
-    this.lastRaw = '';
     this.emit(this.data);
   }
 
@@ -793,11 +786,7 @@ export class BleTreadmill extends BleDevice {
       inclinePct: d.inclinePct ?? this.data.inclinePct,
       hr: d.hr ?? this.data.hr,
     };
-    this.packets++;
-    this.lastAt = Date.now();
-    this.lastRaw = Array.from(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), (b) => b.toString(16).padStart(2, '0')).join(' ');
     this.emit(this.data);
-    if (this.packets === 1 || this.packets % 5 === 0) this.changed();
   };
 
   private onStatus = (e: Event) => {
