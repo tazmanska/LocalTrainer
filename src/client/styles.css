@@ -44,6 +44,7 @@ h3 { font-size: 1rem; font-weight: 600; }
 }
 :root:fullscreen .appbar { display: none; }
 .brand { font-family: var(--f-num); font-weight: 800; font-size: 1.45rem; letter-spacing: 0.02em; display: flex; align-items: center; gap: 0.5rem; }
+.brand .ver { font-family: var(--f-mono); font-weight: 500; font-size: 0.72rem; color: var(--muted); letter-spacing: 0; align-self: flex-end; margin-bottom: 0.25rem; }
 .brand i { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 3px; background: linear-gradient(135deg, var(--z2), var(--z4) 60%, var(--z6)); }
 nav { display: flex; gap: 4px; flex-wrap: wrap; }
 nav button { background: none; border: 1px solid transparent; border-radius: 8px; padding: 0.4rem 0.75rem; color: var(--muted); font-weight: 500; }

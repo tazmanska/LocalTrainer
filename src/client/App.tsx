@@ -74,6 +74,7 @@ export function App() {
         <div className="brand">
           <i />
           Trenażer
+          <span className="ver">v{__APP_VERSION__}</span>
         </div>
         <nav aria-label="Ekrany">
           {VIEWS.map((v) => (
