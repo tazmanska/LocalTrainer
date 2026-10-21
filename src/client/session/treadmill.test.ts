@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TreadmillWorkout } from '../../shared/treadmill';
+import { validateTreadmillWorkout, type TreadmillWorkout } from '../../shared/treadmill';
 import { TreadmillRunner } from './treadmill';
 
 const workout: TreadmillWorkout = {
@@ -58,5 +58,31 @@ describe('TreadmillRunner', () => {
     r.start();
     r.tick({ speed: 6, hr: null, distanceM: 1050 });
     expect(r.distance).toBeCloseTo(6 / 3.6 + 1.5 + 6 / 3.6);
+  });
+
+  it('odcinek ze strefą tętna zmienia prędkość najwyżej o 1 km/h na minutę', () => {
+    // HRmax 200: Z2 = 121–140 bpm
+    const w: TreadmillWorkout = { ...workout, intervals: [{ label: 'Z2', duration: 600, speed: 8, hrZone: 1 }] };
+    const r = new TreadmillRunner(w, 12, 200);
+    expect(r.hrRange()).toEqual({ from: 121, to: 140, id: 'Z2' });
+    expect(r.targetSpeed()).toBe(8);
+    r.start();
+    for (let i = 0; i < 60; i++) r.tick({ speed: 8, hr: 160 });
+    expect(r.targetSpeed()).toBe(7.9); // po 60 s czekania pierwszy krok w dół
+    for (let i = 0; i < 60; i++) r.tick({ speed: 8, hr: 160 });
+    expect(r.targetSpeed()).toBe(6.9); // minuta za wysokiego tętna = −1 km/h
+    for (let i = 0; i < 60; i++) r.tick({ speed: 7, hr: 130 });
+    expect(r.targetSpeed()).toBe(6.9); // w strefie bez zmian
+    for (let i = 0; i < 30; i++) r.tick({ speed: 7, hr: 110 });
+    expect(r.targetSpeed()).toBe(7.4); // za niskie: przyspiesza
+    for (let i = 0; i < 30; i++) r.tick({ speed: 7, hr: null });
+    expect(r.targetSpeed()).toBe(7.4); // bez tętna prędkość stoi
+    r.adjust(0.5);
+    expect(r.targetSpeed()).toBe(7.9);
+  });
+
+  it('strefa tętna przechodzi walidację, niepoprawna nie', () => {
+    expect(validateTreadmillWorkout({ name: 'x', intervals: [{ duration: 60, speed: 8, hrZone: 1 }] })).toMatchObject({ workout: { intervals: [{ hrZone: 1 }] } });
+    expect(validateTreadmillWorkout({ name: 'x', intervals: [{ duration: 60, speed: 8, hrZone: 7 }] })).toHaveProperty('error');
   });
 });

@@ -15,6 +15,11 @@ export interface TreadmillInterval {
   speed: number;
   /** nachylenie w %; null/brak = bez zmiany nachylenia */
   incline?: number | null;
+  /**
+   * Strefa tętna (indeks w HR_ZONES, 0 = Z1) utrzymywana przez aplikację: prędkość startuje od `speed`
+   * i jest powoli zmieniana tak, żeby tętno zostało w strefie; null/brak = stała prędkość.
+   */
+  hrZone?: number | null;
 }
 
 export interface TreadmillWorkout {
@@ -56,7 +61,12 @@ export function validateTreadmillWorkout(input: unknown): { workout: TreadmillWo
       incline = round1(incline);
     }
     const label = typeof it?.label === 'string' && it.label.trim() ? it.label.trim().slice(0, 40) : `Odcinek ${n}`;
-    intervals.push({ label, duration: Math.round(duration), speed: round1(speed), incline });
+    let hrZone: number | null = null;
+    if (it?.hrZone !== undefined && it.hrZone !== null) {
+      hrZone = Number(it.hrZone);
+      if (!Number.isInteger(hrZone) || hrZone < 0 || hrZone > 4) return { error: `Odcinek ${n}: strefa tętna od Z1 do Z5.` };
+    }
+    intervals.push({ label, duration: Math.round(duration), speed: round1(speed), incline, ...(hrZone !== null ? { hrZone } : {}) });
   }
   return { workout: { name, intervals } };
 }

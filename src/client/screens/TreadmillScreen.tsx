@@ -277,7 +277,7 @@ function TreadmillDetail({ w, onStart, onEdit, onDelete }: { w: TreadmillWorkout
                 </td>
                 <td className="r">{fmtTime(starts[i]!)}</td>
                 <td className="r">{fmtTime(it.duration)}</td>
-                <td className="r">{kmh(it.speed)}</td>
+                <td className="r">{it.hrZone != null ? `${HR_ZONES[it.hrZone]!.id} tętna · start ${kmh(it.speed)}` : kmh(it.speed)}</td>
                 <td className="r">{paceText(it.speed)} /km</td>
               </tr>
             ))}
@@ -362,6 +362,19 @@ function TreadmillEditor({ initial, onCancel, onSaved }: { initial: TreadmillWor
           <div className="ed-stage" key={i}>
             <input className="tm-text" value={it.label} maxLength={40} aria-label={`Nazwa odcinka ${i + 1}`} onChange={(e) => update(i, { label: e.target.value })} />
             <DurationInput label={`Czas odcinka ${i + 1}`} value={it.duration} onChange={(duration) => update(i, { duration })} />
+            <select
+              aria-label={`Cel odcinka ${i + 1}`}
+              value={it.hrZone ?? 'speed'}
+              onChange={(e) => update(i, { hrZone: e.target.value === 'speed' ? null : Number(e.target.value) })}
+            >
+              <option value="speed">Stała prędkość</option>
+              {HR_ZONES.map((z, zi) => (
+                <option key={z.id} value={zi}>
+                  Tętno {z.id} {z.name}
+                </option>
+              ))}
+            </select>
+            {it.hrZone != null && <span className="muted small">start</span>}
             <SpeedInput label={`Prędkość odcinka ${i + 1}`} value={it.speed} onChange={(speed) => update(i, { speed })} />
             <span className="tm-rowbtns">
               <button type="button" className="btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Przesuń w górę">
@@ -482,7 +495,7 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
   useDeviceChanges(ble);
   const tm = ble.treadmill;
   const runner = useRef<TreadmillRunner>();
-  runner.current ??= new TreadmillRunner(workout, tm.maxSpeed);
+  runner.current ??= new TreadmillRunner(workout, tm.maxSpeed, profile.maxHr);
   const r = runner.current;
   const data = useRef<TreadmillData>({ speedKph: null, distanceM: null, inclinePct: null, hr: null });
   const hrRef = useRef<number | null>(null);
@@ -627,6 +640,19 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
   const avgHr = hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null;
   const avgSpeed = r.elapsed ? (r.distance / r.elapsed) * 3.6 : 0;
   const nextS = nextSpeed(r);
+  const hrRange = r.hrRange();
+  // co robi regulator: podpowiedź pod prędkością w odcinku ze strefą tętna
+  const hrHint = !hrRange
+    ? ''
+    : !hr
+      ? 'brak tętna, prędkość stała'
+      : r.intervalElapsed < 60
+        ? 'czekam, aż tętno się ustabilizuje'
+        : hr > hrRange.to - 2
+          ? 'zwalniam'
+          : hr < hrRange.from + 2
+            ? 'przyspieszam'
+            : 'tętno w strefie';
   const recent = r.samples.slice(-SPARK_WINDOW);
   const waitingForBelt = r.running && beltWait.current > 0;
 
@@ -670,7 +696,7 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
           <div className="lbl">Odcinek {r.index + 1}/{workout.intervals.length}</div>
           <div className="stage-name">{it.label}</div>
           <div className="target">
-            <div className="lbl">Prędkość docelowa</div>
+            <div className="lbl">{hrRange ? `Prędkość · utrzymuję tętno ${hrRange.id}` : 'Prędkość docelowa'}</div>
             <div className="num">
               {pl(target, 1)}
               <span className="unit">km/h</span>
@@ -681,6 +707,7 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
               )}
             </div>
             <div className="sub">
+              {hrRange && `strefa ${hrRange.from}–${hrRange.to} bpm · ${hrHint} · `}
               tempo {paceText(target)} /km
               {it.incline != null && ` · nachylenie ${pl(it.incline, 1)}%`}
               {r.offset !== 0 && ` · korekta ${r.offset > 0 ? '+' : '−'}${pl(Math.abs(r.offset), 1)}`}
@@ -696,7 +723,8 @@ function TreadmillRun({ workout, ble, profile, onClose, onSaved }: RunProps) {
           <div className="next">
             {next ? (
               <>
-                Następnie: <b>{next.label}</b> · {kmh(r.speedOf(r.index + 1))} · {fmtTime(next.duration)}
+                Następnie: <b>{next.label}</b> · {next.hrZone != null ? `tętno ${HR_ZONES[next.hrZone]!.id}, start ` : ''}
+                {kmh(r.speedOf(r.index + 1))} · {fmtTime(next.duration)}
               </>
             ) : (
               'Ostatni odcinek'

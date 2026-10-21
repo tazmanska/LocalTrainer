@@ -1,4 +1,9 @@
+import { HR_ZONES, zoneRanges } from '../../shared/profile';
 import { intervalStarts, TREADMILL_MAX_KPH, TREADMILL_MIN_KPH, type TreadmillWorkout } from '../../shared/treadmill';
+
+const HR_SETTLE_S = 60;
+const HR_STEP_S = 6;
+const HR_MARGIN = 2;
 
 export interface TreadmillSample {
   t: number;
@@ -25,6 +30,9 @@ export class TreadmillRunner {
   /** dystans liczony z prędkości zmierzonej (albo docelowej, gdy bieżnia jej nie podaje), m */
   distance = 0;
   private lastDistanceM: number | null = null;
+  /** prędkość ustawiana przez regulator strefy tętna i odcinek, którego dotyczy */
+  private hrSpeed: number | null = null;
+  private hrIndex = -1;
   readonly samples: TreadmillSample[] = [];
   startedAt: Date | null = null;
 
@@ -32,6 +40,8 @@ export class TreadmillRunner {
     readonly workout: TreadmillWorkout,
     /** najwyższa prędkość do ustawienia (limit aplikacji albo bieżni) */
     readonly maxSpeed = TREADMILL_MAX_KPH,
+    /** tętno maksymalne z profilu, do stref tętna */
+    readonly maxHr = 185,
   ) {
     this.starts = intervalStarts(workout.intervals);
     this.total = workout.intervals.reduce((a, s) => a + s.duration, 0);
@@ -59,13 +69,45 @@ export class TreadmillRunner {
     return Math.max(0, this.interval.duration - this.intervalElapsed);
   }
 
-  /** Prędkość docelowa odcinka z korektą, km/h. */
-  speedOf(i = this.index) {
-    const s = this.workout.intervals[i]!.speed + this.offset;
+  private clampSpeed(s: number) {
     return Math.round(Math.min(Math.min(TREADMILL_MAX_KPH, this.maxSpeed), Math.max(TREADMILL_MIN_KPH, s)) * 10) / 10;
   }
 
+  /** Prędkość docelowa odcinka z korektą, km/h; w odcinku ze strefą tętna bieżąca prędkość z regulatora. */
+  speedOf(i = this.index) {
+    if (i === this.index && this.hrSpeed !== null && this.hrIndex === i) return this.clampSpeed(this.hrSpeed);
+    return this.clampSpeed(this.workout.intervals[i]!.speed + this.offset);
+  }
+
+  /** Zakres tętna (bpm) strefy bieżącego odcinka; null = odcinek ze stałą prędkością. */
+  hrRange(i = this.index): { from: number; to: number; id: string } | null {
+    const z = this.workout.intervals[i]?.hrZone;
+    if (z === null || z === undefined) return null;
+    const r = zoneRanges(HR_ZONES, this.maxHr)[z]!;
+    return { from: r.from, to: r.to ?? this.maxHr, id: r.id };
+  }
+
+  /**
+   * Regulator strefy tętna, wołany co sekundę: przez pierwsze HR_SETTLE_S s odcinka czeka, aż tętno
+   * zareaguje, potem co HR_STEP_S s zmienia prędkość o 0,1 km/h (1 km/h na minutę), gdy tętno jest
+   * przy granicy strefy albo poza nią. Bez odczytu tętna prędkość się nie zmienia.
+   */
+  private regulate(hr: number | null) {
+    const range = this.hrRange();
+    if (!range) return;
+    if (this.hrIndex !== this.index) {
+      this.hrIndex = this.index;
+      this.hrSpeed = this.interval.speed + this.offset;
+    }
+    const t = this.intervalElapsed;
+    if (!hr || t < HR_SETTLE_S || t % HR_STEP_S !== 0) return;
+    // margines 2 bpm od granic, żeby nie czekać, aż tętno wyjdzie ze strefy
+    if (hr > range.to - HR_MARGIN) this.hrSpeed = this.clampSpeed(this.hrSpeed! - 0.1);
+    else if (hr < range.from + HR_MARGIN) this.hrSpeed = this.clampSpeed(this.hrSpeed! + 0.1);
+  }
+
   targetSpeed() {
+    if (this.hrRange() && this.hrIndex !== this.index) this.regulate(null);
     return this.speedOf();
   }
 
@@ -95,6 +137,7 @@ export class TreadmillRunner {
     this.lastDistanceM = d;
     this.samples.push({ t: this.elapsed, speed: r.speed, target, hr: r.hr, distance: Math.round(this.distance * 10) / 10 });
     this.elapsed++;
+    if (!this.finished) this.regulate(r.hr);
     if (this.finished) this.running = false;
   }
 
@@ -110,6 +153,11 @@ export class TreadmillRunner {
   }
 
   adjust(delta: number) {
+    // w odcinku ze strefą tętna przyciski zmieniają bieżącą prędkość regulatora
+    if (this.hrRange() && this.hrIndex === this.index && this.hrSpeed !== null) {
+      this.hrSpeed = this.clampSpeed(this.hrSpeed + delta);
+      return;
+    }
     this.offset = Math.round(Math.min(3, Math.max(-3, this.offset + delta)) * 10) / 10;
   }
 }
