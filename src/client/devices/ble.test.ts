@@ -377,6 +377,19 @@ describe('BleTreadmill', () => {
     expect(events).toEqual(['paused']);
   });
 
+  it('dane podzielone na kilka pakietów nie gubią prędkości', async () => {
+    const { data, device } = treadmill();
+    const src = new BleSource();
+    const got: TreadmillData[] = [];
+    src.onTreadmill((d) => got.push(d));
+    await src.treadmill.connectDevice(device);
+    data.push(dv(0x04, 0x00, 0xe8, 0x03, 0x64, 0x00, 0x00)); // prędkość 10 km/h i dystans 100 m
+    data.push(dv(0x01, 0x01, 0x8c)); // More Data: bez prędkości, tylko tętno 140
+    expect(got.at(-1)).toEqual({ speedKph: 10, distanceM: 100, inclinePct: null, hr: 140 });
+    expect(src.treadmill.packets).toBe(2);
+    expect(src.treadmill.lastRaw).toBe('01 01 8c');
+  });
+
   it('pauza zapomina cel, żeby ponowne połączenie nie ruszyło taśmy', async () => {
     const { cp, device } = treadmill();
     const src = new BleSource();

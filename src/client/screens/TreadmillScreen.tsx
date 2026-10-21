@@ -176,10 +176,17 @@ function TreadmillDevices({ ble }: { ble: BleSource }) {
         'Bieżnia · FTMS · prędkość' +
         (tm.supportsIncline ? ' i nachylenie' : '') +
         (range ? ` · ${pl(range.min, 1)}–${pl(tm.maxSpeed, 1)} km/h` : ` · do ${TREADMILL_MAX_KPH} km/h`),
+      // diagnostyka: czy bieżnia w ogóle wysyła dane i czy jest w nich prędkość
+      diag:
+        tm.state !== 'connected'
+          ? undefined
+          : tm.packets === 0
+            ? 'Bieżnia nie wysłała jeszcze danych (Treadmill Data).'
+            : `Odczyt z bieżni: prędkość ${tm.data.speedKph === null ? 'brak w danych' : `${pl(tm.data.speedKph, 1)} km/h`}, pakietów ${tm.packets}. Ostatni: ${tm.lastRaw}`,
       dev: tm,
       connect: 'Połącz bieżnię',
     },
-    { key: 'hr', label: hr.label || 'Pas tętna', sub: 'Pas tętna · bez pasa tętno z bieżni, jeśli je podaje', dev: hr, connect: 'Połącz pas' },
+    { key: 'hr', label: hr.label || 'Pas tętna', sub: 'Pas tętna · bez pasa tętno z bieżni, jeśli je podaje', dev: hr, connect: 'Połącz pas', diag: undefined },
   ];
   return (
     <div className="devpanel">
@@ -190,7 +197,7 @@ function TreadmillDevices({ ble }: { ble: BleSource }) {
         <p className="err small">{unavailable}</p>
       ) : (
         <div className="devices">
-          {rows.map(({ key, label, sub, dev, connect }) => {
+          {rows.map(({ key, label, sub, dev, connect, diag }) => {
             const connected = dev.state === 'connected';
             return (
               <div className="dev" key={key}>
@@ -198,6 +205,7 @@ function TreadmillDevices({ ble }: { ble: BleSource }) {
                 <div className="t">
                   {label}
                   <small>{sub}</small>
+                  {diag && <small className="mono">{diag}</small>}
                   {dev.message && <small className={dev.state === 'error' ? 'err' : undefined}>{dev.message}</small>}
                 </div>
                 <span className="chip">{STATE_TEXT[dev.state]}</span>
