@@ -68,6 +68,7 @@ main.full { max-width: none; }
 .metric { justify-content: space-between; }
 .metric .num { font-size: clamp(3.6rem, min(7.5vw, 12vh), 17rem); }
 .metric.hr .num { color: var(--hr); }
+.metric .sub { font-family: var(--f-num); font-weight: 600; font-size: clamp(1.25rem, min(2vw, 3.5vh), 3.8rem); }
 .metric .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .chartbox { position: relative; padding: 0.75rem 0.9rem 0.6rem; }
 .chartbox.flat { padding: 0; }
