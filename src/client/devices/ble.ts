@@ -135,6 +135,29 @@ const save = (key: string, v: Saved) => {
   }
 };
 
+/**
+ * Wynik próby połączenia z zapamiętanym urządzeniem: none = nic nie zapamiętano, already = już połączone,
+ * unsupported = przeglądarka nie podaje listy urządzeń, forgotten = nie ma go na tej liście (trzeba sparować raz jeszcze),
+ * failed = urządzenie nie odpowiedziało.
+ */
+export type ReconnectResult = 'none' | 'already' | 'unsupported' | 'forgotten' | 'failed' | 'connected';
+
+/** Ponawia łączenie ze wszystkimi urządzeniami naraz i opisuje wynik dla użytkownika. */
+export async function reconnectAll(devices: readonly { reconnectSaved(): Promise<ReconnectResult> }[]): Promise<string> {
+  const results = await Promise.all(devices.map((d) => d.reconnectSaved()));
+  const n = (r: ReconnectResult) => results.filter((x) => x === r).length;
+  if (n('unsupported')) {
+    return 'Przeglądarka nie podaje listy zapamiętanych urządzeń. Włącz flagę enable-web-bluetooth-new-permissions-backend i uruchom ją ponownie.';
+  }
+  if (n('none') === results.length) return 'Nie ma zapamiętanych urządzeń. Połącz je najpierw przyciskami poniżej.';
+  const parts: string[] = [];
+  if (n('connected')) parts.push(`połączono: ${n('connected')}`);
+  if (n('already')) parts.push(`już połączone: ${n('already')}`);
+  if (n('failed')) parts.push(`nie odpowiedziało: ${n('failed')} (czy jest włączone i w zasięgu?)`);
+  if (n('forgotten')) parts.push(`do ponownego sparowania: ${n('forgotten')} (przycisk Połącz poniżej)`);
+  return parts.join(' · ');
+}
+
 /** Wspólna obsługa jednego urządzenia: stan, zapamiętanie, rozłączenie i automatyczne ponowne łączenie. */
 abstract class BleDevice {
   device: BluetoothDevice | null = null;
@@ -179,17 +202,22 @@ abstract class BleDevice {
     await this.connectDevice(device);
   }
 
-  /** Ciche połączenie z zapamiętanym urządzeniem (bez okna wyboru), jeśli przeglądarka na to pozwala. */
-  async reconnectSaved() {
+  /** Ciche połączenie z zapamiętanym urządzeniem (bez okna wyboru), jeśli przeglądarka na to pozwala; po błędzie można ponowić. */
+  async reconnectSaved(): Promise<ReconnectResult> {
     const saved = load(this.storageKey);
-    if (!saved || this.device || bluetoothUnavailable() || !navigator.bluetooth.getDevices) return;
+    if (!saved) return 'none';
+    if (this.device && this.state !== 'error') return 'already';
+    if (bluetoothUnavailable() || !navigator.bluetooth.getDevices) return 'unsupported';
+    let devices: BluetoothDevice[];
     try {
-      const devices = await navigator.bluetooth.getDevices();
-      const device = devices.find((d) => d.id === saved.id) ?? devices.find((d) => d.name === saved.name);
-      if (device) await this.connectDevice(device);
+      devices = await navigator.bluetooth.getDevices();
     } catch {
-      // brak uprawnień do listy urządzeń; użytkownik połączy ręcznie
+      return 'unsupported';
     }
+    const device = devices.find((d) => d.id === saved.id) ?? devices.find((d) => d.name === saved.name);
+    if (!device) return 'forgotten';
+    await this.connectDevice(device);
+    return this.state === 'connected' ? 'connected' : 'failed';
   }
 
   /** Połączenie z już wybranym urządzeniem (po oknie wyboru, z listy zapamiętanych albo w testach). */

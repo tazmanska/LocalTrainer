@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { BleSource } from './ble';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BleSource, reconnectAll } from './ble';
 import {
   buildAntFrame,
   decodeFecPage,
@@ -409,5 +409,50 @@ describe('BleTreadmill', () => {
     );
     expect(src.treadmill.state).toBe('error');
     expect(src.treadmill.message).toMatch(/nie jest bieżnią/);
+  });
+});
+
+describe('łączenie z zapamiętanymi urządzeniami', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function setup(devices: BluetoothDevice[] | undefined) {
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) });
+    vi.stubGlobal('navigator', { bluetooth: devices ? { getDevices: async () => devices } : {} });
+    return store;
+  }
+  const hrDevice = () => fakeDevice({ [HEART_RATE_SERVICE]: { [HEART_RATE_MEASUREMENT]: new FakeChar() } });
+
+  it('łączy zapamiętane urządzenie i opisuje wynik', async () => {
+    setup([hrDevice()]).set('trenazer:hr', JSON.stringify({ id: 'dev1', name: 'KICKR CORE 1234' }));
+    const src = new BleSource();
+    expect(await src.heartRate.reconnectSaved()).toBe('connected');
+    expect(src.heartRate.state).toBe('connected');
+    expect(await reconnectAll([src.heartRate])).toBe('już połączone: 1');
+  });
+
+  it('po utracie połączenia i błędzie można ponowić próbę', async () => {
+    setup([hrDevice()]).set('trenazer:hr', JSON.stringify({ id: 'dev1', name: 'x' }));
+    const src = new BleSource();
+    await src.heartRate.reconnectSaved();
+    (src.heartRate as unknown as { state: string }).state = 'error';
+    expect(await src.heartRate.reconnectSaved()).toBe('connected');
+  });
+
+  it('rozróżnia brak zapamiętanych, brak na liście przeglądarki i brak funkcji', async () => {
+    setup([]);
+    const empty = new BleSource();
+    expect(await reconnectAll([empty.trainer, empty.heartRate])).toMatch(/Nie ma zapamiętanych/);
+
+    setup([]).set('trenazer:hr', JSON.stringify({ id: 'dev1', name: 'x' }));
+    expect(await reconnectAll([new BleSource().heartRate])).toMatch(/do ponownego sparowania: 1/);
+
+    setup(undefined).set('trenazer:hr', JSON.stringify({ id: 'dev1', name: 'x' }));
+    expect(await reconnectAll([new BleSource().heartRate])).toMatch(/flagę/);
+  });
+
+  it('urządzenie, które nie odpowiada, liczy się jako nieudane', async () => {
+    setup([fakeDevice({})]).set('trenazer:hr', JSON.stringify({ id: 'dev1', name: 'x' }));
+    expect(await reconnectAll([new BleSource().heartRate])).toMatch(/nie odpowiedziało: 1/);
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { bluetoothUnavailable, type BleSource } from '../devices/ble';
 import { FAN_STATE_TEXT } from '../devices/protocol';
+import { ReconnectSaved } from './ReconnectSaved';
 import type { DeviceInfo } from '../devices/source';
 
 export type DeviceMode = 'sim' | 'ble';
@@ -109,6 +110,7 @@ export function DevicesPanel({ mode, onMode, ble }: Props) {
         </p>
       ) : (
         <div className="devices">
+          <ReconnectSaved devices={[ble.trainer, ble.heartRate, ble.pedals, ble.fan]} />
           {rows.map(({ info, sub, pair, drop }) => (
             <div className="dev" key={info.kind}>
               <span className={info.connected ? 'dot' : info.state === 'connecting' || info.state === 'reconnecting' ? 'dot warn' : 'dot off'} />

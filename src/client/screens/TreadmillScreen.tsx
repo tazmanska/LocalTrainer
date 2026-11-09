@@ -15,6 +15,7 @@ import { deleteTreadmillWorkout, getProfile, listTreadmillWorkouts, saveSession,
 import { useDeviceChanges } from '../components/DevicesPanel';
 import { DurationInput, Stepper } from '../components/DurationInput';
 import { useFullscreen } from '../components/fullscreen';
+import { ReconnectSaved } from '../components/ReconnectSaved';
 import { Sparkline } from '../components/Sparkline';
 import { Stat } from '../components/Stat';
 import { bluetoothUnavailable, type BleSource } from '../devices/ble';
@@ -190,6 +191,7 @@ function TreadmillDevices({ ble }: { ble: BleSource }) {
         <p className="err small">{unavailable}</p>
       ) : (
         <div className="devices">
+          <ReconnectSaved devices={[tm, hr]} />
           {rows.map(({ key, label, sub, dev, connect }) => {
             const connected = dev.state === 'connected';
             return (
