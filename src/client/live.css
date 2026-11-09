@@ -31,6 +31,11 @@ main.full { max-width: none; }
 .clock .num { font-size: clamp(2.6rem, min(5.2vw, 9vh), 12rem); }
 .live-grid { display: grid; grid-template-columns: 1fr 1.35fr 1fr; gap: 0.8rem; }
 .tile { padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stage-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.cad-badge {
+  font-family: var(--f-num); font-weight: 700; font-size: clamp(1.05rem, min(1.8vw, 3.2vh), 3.2rem); line-height: 1; white-space: nowrap;
+  padding: 0.25em 0.55em; border-radius: 6px; color: #06222a; background: var(--accent);
+}
 .stage-name { font-family: var(--f-num); font-weight: 600; font-size: clamp(1.3rem, min(2.4vw, 4.2vh), 4.5rem); line-height: 1.05; }
 .stage .target .num { font-size: clamp(3rem, min(6vw, 10vh), 14rem); color: var(--zc); }
 .stage .stage-left { margin-block: auto; }

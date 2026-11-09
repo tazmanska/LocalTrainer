@@ -1,4 +1,5 @@
 import { POWER_ZONES, zoneIndex } from '../shared/profile';
+import { CADENCE_OK, CADENCE_WARN } from '../shared/workout';
 
 export const pl = (n: number, digits: number) => n.toFixed(digits).replace('.', ',');
 
@@ -45,6 +46,12 @@ export function balanceLevel(leftPct: number): Level {
   const l = Math.round(leftPct);
   const diff = Math.abs(l - (100 - l));
   return diff <= 2 ? 'good' : diff < 6 ? 'warn' : 'bad';
+}
+
+/** Kadencja na etapie z celem: do ±3 rpm dobrze, do ±6 uwaga, dalej źle. */
+export function cadenceTargetLevel(rpm: number, target: number): Level {
+  const diff = Math.abs(Math.round(rpm) - target);
+  return diff <= CADENCE_OK ? 'good' : diff <= CADENCE_WARN ? 'warn' : 'bad';
 }
 
 /** Kadencja: powyżej 85 dobrze, 81–85 uwaga, 80 i mniej źle. */

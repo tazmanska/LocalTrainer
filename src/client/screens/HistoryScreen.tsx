@@ -168,6 +168,7 @@ function SessionDetail({ s, onDelete }: { s: Session; onDelete: () => void }) {
         <Stat k="Śr. tętno" v={sum.avgHr ? `${sum.avgHr} bpm` : '–'} />
         <Stat k="Maks. tętno" v={sum.maxHr ? `${sum.maxHr} bpm` : '–'} />
         <Stat k="Kadencja" v={sum.avgCadence ? `${sum.avgCadence} rpm` : '–'} />
+        {sum.cadenceOnTarget != null && <Stat k="W celu kadencji" v={`${sum.cadenceOnTarget}%`} />}
         {sum.avgBalance != null && <Stat k="Balans L/P" v={`${Math.round(sum.avgBalance)} / ${100 - Math.round(sum.avgBalance)}`} />}
       </div>
       <div className="chartbox flat">

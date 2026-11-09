@@ -53,14 +53,19 @@ export function toSegments(stages: readonly Stage[]): Segment[] {
 }
 
 /** Etapy N × (praca, przerwa); po ostatniej pracy nie ma przerwy. */
-function repeatStages(reps: number, work: { duration: number; pct: number }, rest: { duration: number; pct: number }): Stage[] {
+type Block = { duration: number; pct: number; cadence?: number | null };
+const cadenceOf = (b: Block) => (b.cadence ? { cadence: b.cadence } : {});
+
+function repeatStages(reps: number, work: Block, rest: Block): Stage[] {
   const out: Stage[] = [];
   for (let i = 1; i <= reps; i++) {
-    out.push({ label: `Interwał ${i}/${reps}`, kind: 'on', duration: work.duration, from: work.pct, to: null });
-    if (i < reps && rest.duration > 0) out.push({ label: `Przerwa ${i}/${reps - 1}`, kind: 'off', duration: rest.duration, from: rest.pct, to: null });
+    out.push({ label: `Interwał ${i}/${reps}`, kind: 'on', duration: work.duration, from: work.pct, to: null, ...cadenceOf(work) });
+    if (i < reps && rest.duration > 0) out.push({ label: `Przerwa ${i}/${reps - 1}`, kind: 'off', duration: rest.duration, from: rest.pct, to: null, ...cadenceOf(rest) });
   }
   return out;
 }
+
+const DEFAULT_CADENCE = 90;
 
 const TEMPLATE: Stage[] = [
   { label: 'Rozgrzewka', kind: 'warmup', duration: 600, from: 50, to: 75 },
@@ -74,8 +79,15 @@ export function validateStages(name: string, stages: readonly Stage[]): string |
   for (const [i, s] of stages.entries()) {
     if (s.duration < 5) return `Etap ${i + 1}: czas co najmniej 5 s.`;
     for (const v of [s.from, s.to]) if (v !== null && (!Number.isFinite(v) || v < 0 || v > 500)) return `Etap ${i + 1}: moc od 0 do 500% FTP.`;
+    if (s.cadence !== undefined && (s.cadence < 30 || s.cadence > 200)) return `Etap ${i + 1}: kadencja od 30 do 200 rpm.`;
   }
   return null;
+}
+
+/** Etap z ustawionym albo usuniętym celem kadencji. */
+function withCadence(s: Stage, cadence: number | null): Stage {
+  const { cadence: _old, ...rest } = s;
+  return cadence ? { ...rest, cadence } : rest;
 }
 
 /** Wybór strefy (ustawia moc na środek strefy) albo ręczne % FTP; strefa podąża za wpisanym %. */
@@ -106,6 +118,26 @@ function PowerPicker({ value, onChange, ftp, label, allowFree }: { value: number
   );
 }
 
+/** Opcjonalny cel kadencji: przycisk włączający albo liczba z przyciskami ±5 rpm. */
+function CadenceInput({ value, onChange, label }: { value: number | null | undefined; onChange: (v: number | null) => void; label: string }) {
+  if (!value) {
+    return (
+      <button type="button" className="btn" onClick={() => onChange(DEFAULT_CADENCE)}>
+        kadencja
+      </button>
+    );
+  }
+  return (
+    <span className="ed-power">
+      {/* min 1, żeby wpisywanie „90” z klawiatury nie przeskakiwało po pierwszej cyfrze; zakres sprawdza zapis */}
+      <Stepper label={label} value={value} onChange={onChange} step={5} min={1} max={200} unit="rpm" />
+      <button type="button" className="btn" onClick={() => onChange(null)}>
+        bez kadencji
+      </button>
+    </span>
+  );
+}
+
 interface Props {
   /** trening do edycji; null = nowy */
   initial: Workout | null;
@@ -117,7 +149,7 @@ interface Props {
 export function WorkoutEditor({ initial, ftp, onCancel, onSaved }: Props) {
   const [name, setName] = useState(initial?.name ?? 'Próg 3×5 min');
   const [stages, setStages] = useState<Stage[]>(() => (initial ? toStages(initial.segments) : TEMPLATE.map((s) => ({ ...s }))));
-  const [rep, setRep] = useState({ reps: 4, work: 240, workPct: 113, rest: 120, restPct: 50 });
+  const [rep, setRep] = useState({ reps: 4, work: 240, workPct: 113, workCad: null as number | null, rest: 120, restPct: 50, restCad: null as number | null });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const segments = toSegments(stages);
@@ -204,6 +236,11 @@ export function WorkoutEditor({ initial, ftp, onCancel, onSaved }: Props) {
                   </button>
                 </span>
               ))}
+            <CadenceInput
+              label={`Kadencja etapu ${i + 1}`}
+              value={s.cadence}
+              onChange={(c) => setStages((xs) => xs.map((x, j) => (j === i ? withCadence(x, c) : x)))}
+            />
             <span className="tm-rowbtns">
               <button type="button" className="btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Przesuń w górę">
                 ↑
@@ -233,17 +270,19 @@ export function WorkoutEditor({ initial, ftp, onCancel, onSaved }: Props) {
             <span className="muted small">praca</span>
             <DurationInput label="Czas pracy" value={rep.work} onChange={(work) => setRep({ ...rep, work })} />
             <PowerPicker label="Moc pracy" ftp={ftp} value={rep.workPct} onChange={(v) => setRep({ ...rep, workPct: v ?? rep.workPct })} />
+            <CadenceInput label="Kadencja pracy" value={rep.workCad} onChange={(workCad) => setRep({ ...rep, workCad })} />
           </span>
           <span className="ed-pair">
             <span className="muted small">przerwa</span>
             <DurationInput label="Czas przerwy" value={rep.rest} onChange={(rest) => setRep({ ...rep, rest })} />
             <PowerPicker label="Moc przerwy" ftp={ftp} value={rep.restPct} onChange={(v) => setRep({ ...rep, restPct: v ?? rep.restPct })} />
+            <CadenceInput label="Kadencja przerwy" value={rep.restCad} onChange={(restCad) => setRep({ ...rep, restCad })} />
           </span>
           <button
             className="btn"
             type="button"
             onClick={() =>
-              setStages((xs) => [...xs, ...repeatStages(rep.reps, { duration: rep.work, pct: rep.workPct }, { duration: rep.rest, pct: rep.restPct })])
+              setStages((xs) => [...xs, ...repeatStages(rep.reps, { duration: rep.work, pct: rep.workPct, cadence: rep.workCad }, { duration: rep.rest, pct: rep.restPct, cadence: rep.restCad })])
             }
           >
             Dodaj blok

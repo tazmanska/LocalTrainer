@@ -29,4 +29,10 @@ describe('edytor treningów rowerowych', () => {
     expect(validateStages('x', [{ label: 'a', kind: 'steady', duration: 60, from: 600, to: null }])).toMatch(/500/);
     expect(validateStages('x', [{ label: 'a', kind: 'steady', duration: 60, from: 90, to: null }])).toBeNull();
   });
+
+  it('sprawdza zakres kadencji', () => {
+    const stage = { label: 'a', kind: 'steady' as const, duration: 60, from: 90, to: null };
+    expect(validateStages('x', [{ ...stage, cadence: 90 }])).toBeNull();
+    expect(validateStages('x', [{ ...stage, cadence: 9 }])).toMatch(/kadencja/);
+  });
 });

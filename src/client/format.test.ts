@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balanceLevel, cadenceLevel, changeOf, plural } from './format';
+import { balanceLevel, cadenceLevel, cadenceTargetLevel, changeOf, plural } from './format';
 
 describe('progi kolorów', () => {
   it('balans: 50/50 i 51/49 zielony, 52/48 żółty, 53/47 i więcej czerwony', () => {
@@ -36,5 +36,17 @@ describe('changeOf', () => {
     expect(changeOf(null, 200)).toBe('same');
     expect(changeOf(200, null)).toBe('same');
     expect(changeOf(200, undefined)).toBe('same');
+  });
+});
+
+describe('cadenceTargetLevel', () => {
+  it('ocenia odchyłkę od celu w obie strony', () => {
+    expect(cadenceTargetLevel(90, 90)).toBe('good');
+    expect(cadenceTargetLevel(87, 90)).toBe('good');
+    expect(cadenceTargetLevel(93.4, 90)).toBe('good');
+    expect(cadenceTargetLevel(86, 90)).toBe('warn');
+    expect(cadenceTargetLevel(96, 90)).toBe('warn');
+    expect(cadenceTargetLevel(97, 90)).toBe('bad');
+    expect(cadenceTargetLevel(80, 90)).toBe('bad');
   });
 });

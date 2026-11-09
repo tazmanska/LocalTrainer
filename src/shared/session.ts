@@ -1,6 +1,6 @@
 // Zapisana sesja treningowa i jej podsumowanie. Kod współdzielony przez serwer i przeglądarkę.
 import type { TreadmillInterval } from './treadmill.js';
-import type { Segment } from './workout.js';
+import { CADENCE_OK, segmentAt, type Segment } from './workout.js';
 
 /** Jedna sekunda treningu. */
 export interface Sample {
@@ -38,6 +38,8 @@ export interface SessionSummary {
   avgCadence: number | null;
   /** średni udział lewej nogi ważony mocą, %; null bez pedałów z balansem */
   avgBalance?: number | null;
+  /** udział sekund w celu kadencji na etapach z celem, %; null, gdy żaden etap go nie ma */
+  cadenceOnTarget?: number | null;
   /** bieg: dystans, m */
   distance?: number;
   /** bieg: średnia prędkość, km/h */
@@ -70,7 +72,20 @@ export type SessionListItem = Pick<Session, 'id' | 'workoutName' | 'startedAt' |
 
 const avgOf = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
-export function summarize(samples: readonly Sample[], ftp: number): SessionSummary {
+/** Procent sekund z kadencją w celu (± CADENCE_OK rpm), liczony tylko na etapach, które mają cel. */
+export function cadenceOnTarget(samples: readonly Sample[], segments: readonly Segment[]): number | null {
+  let total = 0;
+  let ok = 0;
+  for (const s of samples) {
+    const target = segmentAt(segments, s.t)?.cadence;
+    if (!target || s.cadence === null) continue;
+    total++;
+    if (Math.abs(Math.round(s.cadence) - target) <= CADENCE_OK) ok++;
+  }
+  return total ? Math.round((ok / total) * 100) : null;
+}
+
+export function summarize(samples: readonly Sample[], ftp: number, segments: readonly Segment[] = []): SessionSummary {
   const power = samples.map((s) => s.power ?? 0);
   const n = power.length;
   const avgPower = n ? power.reduce((a, b) => a + b, 0) / n : 0;
@@ -115,6 +130,7 @@ export function summarize(samples: readonly Sample[], ftp: number): SessionSumma
     maxHr: hrs.length ? Math.max(...hrs) : null,
     avgCadence: avgCad === null ? null : Math.round(avgCad),
     avgBalance: balW > 0 ? Math.round((balSum / balW) * 10) / 10 : null,
+    cadenceOnTarget: cadenceOnTarget(samples, segments),
   };
 }
 
@@ -126,8 +142,8 @@ export function summarizeRun(samples: readonly Sample[], ftp: number): SessionSu
   return { ...base, distance: Math.round(raw), avgSpeed: n ? Math.round((raw / n) * 3.6 * 10) / 10 : 0 };
 }
 
-export const summarizeSession = (s: Pick<SessionInput, 'samples' | 'ftp' | 'sport'>) =>
-  s.sport === 'run' ? summarizeRun(s.samples, s.ftp) : summarize(s.samples, s.ftp);
+export const summarizeSession = (s: Pick<SessionInput, 'samples' | 'ftp' | 'sport' | 'segments'>) =>
+  s.sport === 'run' ? summarizeRun(s.samples, s.ftp) : summarize(s.samples, s.ftp, s.segments);
 
 /** Sekundy spędzone w każdej strefie wg funkcji przypisującej indeks strefy. */
 export function timeInZones(samples: readonly Sample[], count: number, zoneOf: (s: Sample) => number | null): number[] {

@@ -48,6 +48,20 @@ export function segmentStarts(segments: readonly Segment[]): number[] {
   });
 }
 
+/** Etap trwający w sekundzie t treningu; poza planem undefined. */
+export function segmentAt(segments: readonly Segment[], t: number): Segment | undefined {
+  let end = 0;
+  for (const s of segments) {
+    end += s.duration;
+    if (t < end) return s;
+  }
+  return undefined;
+}
+
+/** Odchyłka od celu kadencji, rpm: do CADENCE_OK „w celu”, do CADENCE_WARN uwaga, powyżej źle. */
+export const CADENCE_OK = 3;
+export const CADENCE_WARN = 6;
+
 /** Moc docelowa (ułamek FTP) w sekundzie t etapu; liniowo dla ramp. */
 export function targetAt(s: Segment, t: number): number | null {
   if (s.p0 === null || s.p1 === null) return null;

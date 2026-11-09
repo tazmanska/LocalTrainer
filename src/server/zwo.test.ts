@@ -82,3 +82,17 @@ describe('buildZwo (edytor treningów)', () => {
     expect(w.segments).toEqual(segments);
   });
 });
+
+describe('kadencja z pliku ZWO', () => {
+  it('czyta cel kadencji pracy i odpoczynku z IntervalsT', () => {
+    const xml =
+      '<workout_file><name>Baza</name><sportType>bike</sportType><workout><Warmup Duration="600" PowerLow="0.45" PowerHigh="0.65"/>' +
+      '<IntervalsT Repeat="6" OnDuration="240" OffDuration="60" OnPower="0.65" OffPower="0.65" Cadence="90" CadenceResting="108"/></workout></workout_file>';
+    const w = parseZwo(xml, 'baza.zwo');
+    expect(w.segments[0]!.cadence).toBeUndefined();
+    expect(w.segments[1]).toMatchObject({ kind: 'on', duration: 240, cadence: 90 });
+    expect(w.segments[2]).toMatchObject({ kind: 'off', duration: 60, cadence: 108 });
+    expect(w.segments).toHaveLength(13);
+    expect(parseZwo(buildZwo({ name: 'Baza', segments: w.segments }), 'b.zwo').segments.map((s) => s.cadence)).toEqual(w.segments.map((s) => s.cadence));
+  });
+});

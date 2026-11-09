@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { HR_ZONES, POWER_ZONES, zoneIndex, zoneRanges, type Profile, type ZoneDef } from '../../shared/profile';
 import { summarize } from '../../shared/session';
-import type { Workout } from '../../shared/workout';
+import { segmentAt, type Workout } from '../../shared/workout';
 import { saveSession } from '../api';
 import { Sparkline } from '../components/Sparkline';
 import { Stat } from '../components/Stat';
@@ -9,7 +9,7 @@ import { WorkoutChart } from '../components/WorkoutChart';
 import type { BleSource } from '../devices/ble';
 import { SimulatedSource } from '../devices/simulated';
 import type { DataSource, Reading } from '../devices/source';
-import { balanceLevel, cadenceLevel, changeOf, fmtTime, pl } from '../format';
+import { balanceLevel, cadenceLevel, cadenceTargetLevel, changeOf, fmtTime, pl } from '../format';
 import { countdownBeep, loadMuted, segmentStartBeep, storeMuted, unlockAudio } from '../sound';
 import { WorkoutRunner } from '../session/runner';
 import { useFullscreen } from '../components/fullscreen';
@@ -182,7 +182,11 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const segClockChars = longestSeg >= 3600 ? 7 : longestSeg >= 600 ? 5 : 4;
   const sparkPowerMax = Math.max(profile.ftp * 1.3, ...recent.map((s) => Math.max(s.power ?? 0, s.target ?? 0))) * 1.05;
   // Kolor kadencji: powyżej 85 zielony, 81–85 żółty, 80 i mniej czerwony (szary, gdy brak odczytu).
-  const cadLevel = latest.current.cadence == null ? '' : cadenceLevel(cadence);
+  // Na etapie z celem kolor mówi o odchyłce od celu, a nie o ogólnych progach kadencji.
+  const cadTarget = seg.cadence ?? null;
+  const cadLevel = latest.current.cadence == null ? '' : cadTarget !== null ? cadenceTargetLevel(cadence, cadTarget) : cadenceLevel(cadence);
+  const cadDelta = cadTarget !== null && latest.current.cadence != null ? Math.round(cadence) - cadTarget : null;
+  const cadRef = recent.map((s) => segmentAt(workout.segments, s.t)?.cadence ?? null);
   const cadAvg = r.samples.length
     ? Math.round(r.samples.reduce((a, s) => a + (s.cadence ?? 0), 0) / r.samples.length)
     : null;
@@ -191,7 +195,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
   const started = r.startedAt !== null;
   // Czerwona obwódka, gdy w trakcie jazdy moc odbiega od celu o więcej niż 9 W.
   const offTarget = r.running && delta !== null && Math.abs(delta) > OFF_TARGET_W;
-  const summary = ending ? summarize(r.samples, profile.ftp) : null;
+  const summary = ending ? summarize(r.samples, profile.ftp, workout.segments) : null;
 
   return (
     <section className={r.running ? 'live' : 'live is-paused'}>
@@ -227,7 +231,10 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
       <div className="live-grid">
         <div className="panel tile stage" style={{ '--zc': tz === null ? 'var(--dim)' : `var(--z${tz + 1})` } as React.CSSProperties}>
           <div className="lbl">Etap</div>
-          <div className="stage-name">{seg.label}</div>
+          <div className="stage-head">
+            <div className="stage-name">{seg.label}</div>
+            {cadTarget !== null && <div className="cad-badge">Trzymaj {cadTarget} rpm</div>}
+          </div>
           <div className="target">
             <div className="lbl">Moc docelowa</div>
             <div className="num">
@@ -268,7 +275,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
                   : next.p0 !== next.p1
                     ? `${W(next.p0)}→${W(next.p1)} W`
                     : `${W(next.p0)} W`}{' '}
-                · {fmtTime(next.duration)}
+                {next.cadence ? `· ${next.cadence} rpm ` : ''}· {fmtTime(next.duration)}
               </>
             ) : (
               'Ostatni etap'
@@ -318,17 +325,36 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
 
         <div className="side">
           <div className={`panel tile metric cad ${cadLevel}`}>
-            <Sparkline values={recent.map((s) => s.cadence)} window={SPARK_WINDOW} min={40} max={130} colorOf={(c) => CAD_COLORS[cadenceLevel(c)]} />
+            <Sparkline
+              values={recent.map((s) => s.cadence)}
+              reference={cadRef.some((c) => c !== null) ? cadRef : undefined}
+              window={SPARK_WINDOW}
+              min={40}
+              max={130}
+              colorOf={(c) => (cadTarget !== null ? 'var(--accent)' : CAD_COLORS[cadenceLevel(c)])}
+            />
             <div className="lbl">Kadencja</div>
             <div className="row">
               <div className="num">
                 <Fixed d={3}>{cadence}</Fixed>
                 <span className="unit">rpm</span>
               </div>
-              {cadAvg !== null && (
+              {cadTarget !== null ? (
                 <span className="sub">
-                  śr. <Fixed d={3}>{cadAvg}</Fixed>
+                  cel <Fixed d={3}>{cadTarget}</Fixed>
+                  {cadDelta !== null && (
+                    <>
+                      {' '}
+                      · <Fixed d={3}>{`${cadDelta > 0 ? '+' : cadDelta < 0 ? '−' : '±'}${Math.abs(cadDelta)}`}</Fixed>
+                    </>
+                  )}
                 </span>
+              ) : (
+                cadAvg !== null && (
+                  <span className="sub">
+                    śr. <Fixed d={3}>{cadAvg}</Fixed>
+                  </span>
+                )
               )}
             </div>
           </div>
@@ -442,6 +468,7 @@ export function LiveScreen({ workout, profile, onSaved, onDiscard, ble }: Props)
               <Stat k="NP" v={`${summary.np} W`} />
               <Stat k="TSS" v={String(Math.round(summary.tss))} />
               <Stat k="Śr. tętno" v={summary.avgHr ? `${summary.avgHr} bpm` : '–'} />
+              {summary.cadenceOnTarget != null && <Stat k="W celu kadencji" v={`${summary.cadenceOnTarget}%`} />}
             </div>
             <p className="muted">
               {r.samples.length
