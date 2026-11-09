@@ -168,6 +168,12 @@ main.full { max-width: none; }
 .balbar .mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--muted); transform: translateX(-1px); }
 .balbar .mk { position: absolute; top: -3px; bottom: -3px; width: 4px; border-radius: 2px; background: var(--zc, var(--accent)); transform: translateX(-2px); transition: left 0.5s; }
 .legs .bal { font-size: 0.75em; color: var(--muted); text-align: center; }
+.legs-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline; column-gap: 0.3em; }
+.legs-row > :first-child { justify-self: end; }
+.legs-row > :last-child { justify-self: start; }
+.legs-row .sep { color: var(--muted); font-weight: 500; }
+.legs .legs-head { font-size: 0.8em; }
+.legs .legs-head .side-l { font-size: 1em; width: auto; }
 .power-main .mega { white-space: nowrap; min-width: 0; }
 /* z kolumną L/P liczba mocy jest nieco mniejsza, żeby obie zmieściły się w kafelku */
 .power-main.with-legs .mega { font-size: clamp(5rem, min(11.5vw, 24vh), 28rem); }

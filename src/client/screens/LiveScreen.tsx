@@ -536,25 +536,36 @@ function LegPower({ left, right, bal }: { left: number; right: number; bal: numb
   const weak = l < 50 ? 'L' : l > 50 ? 'P' : null;
   return (
     <div className={`legs ${level}`} aria-label={`Moc lewa ${left} W, prawa ${right} W, balans ${l} do ${100 - l}`}>
-      <div className={weak === 'L' ? 'leg weak' : 'leg'}>
-        <span className="side-l">L</span>
-        <Fixed d={3}>{left}</Fixed>
+      {/* moc obu nóg w tym samym układzie co balans: lewa nad lewym %, prawa nad prawym % */}
+      <div className="legs-row legs-head">
+        <span className={weak === 'L' ? 'leg weak' : 'leg'}>
+          <span className="side-l">L</span>
+        </span>
         <span className="unit">W</span>
+        <span className={weak === 'P' ? 'leg weak' : 'leg'}>
+          <span className="side-l">P</span>
+        </span>
       </div>
-      <div className={weak === 'P' ? 'leg weak' : 'leg'}>
-        <span className="side-l">P</span>
-        <Fixed d={3}>{right}</Fixed>
-        <span className="unit">W</span>
+      <div className="legs-row">
+        <span className={weak === 'L' ? 'leg weak' : 'leg'}>
+          <Fixed d={3}>{left}</Fixed>
+        </span>
+        <span className="sep">/</span>
+        <span className={weak === 'P' ? 'leg weak' : 'leg'}>
+          <Fixed d={3} left>
+            {right}
+          </Fixed>
+        </span>
       </div>
       <div className="balbar">
         <span className="mid" />
         <span className="mk" style={{ left: `${50 + offset}%` }} />
       </div>
-      <div className="bal">
+      <div className="bal legs-row">
         <span className={weak === 'L' ? 'weak' : undefined}>
           <Fixed d={2}>{l}</Fixed>
-        </span>{' '}
-        /{' '}
+        </span>
+        <span className="sep">/</span>
         <span className={weak === 'P' ? 'weak' : undefined}>
           <Fixed d={2} left>
             {100 - l}
